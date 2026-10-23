@@ -8,15 +8,13 @@ Home Assistant sensors for a Tata EV that uses the iRA.ev app:
 
 Readings refresh about every 5 minutes. This is unofficial and is not part of Tata Motors.
 
-## Install with HACS
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pranavjindal999&repository=tata-ira-ev&category=integration)
 
-1. In HACS, open the menu and choose **Custom repositories**.
-2. Add `https://github.com/pranavjindal999/tata-ira-ev` and set the category to **Integration**.
-3. Open **Tata iRA.ev** and choose **Download**.
-4. Restart Home Assistant.
-5. Go to **Settings → Devices & services → Add integration** and choose **Tata iRA.ev**.
+## Install
 
-To install without HACS, copy `custom_components/tata_ira` into `config/custom_components/tata_ira` and restart Home Assistant.
+1. Click the button above. Home Assistant opens the repository in Marketplace, or in HACS on older versions. Install it.
+2. Restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration**, and choose **Tata iRA.ev**.
 
 ## Setup values
 
