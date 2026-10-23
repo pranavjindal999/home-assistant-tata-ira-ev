@@ -1,0 +1,12 @@
+{
+  "domain": "tata_ira",
+  "name": "Tata iRA.ev",
+  "codeowners": ["@pranavjindal999"],
+  "config_flow": true,
+  "documentation": "https://github.com/pranavjindal999/tata-ira-ev",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/pranavjindal999/tata-ira-ev/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

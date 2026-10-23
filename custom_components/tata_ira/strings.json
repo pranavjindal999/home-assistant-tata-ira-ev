@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect the Tata EV",
+        "description": "Battery percentage, charging, and time remaining are read from iRA.ev about every 5 minutes. Use the vehicleId and x-api-key headers from a vehicle-health request, and the refreshToken from a refresh-token request.",
+        "data": {
+          "vehicle_id": "Vehicle ID",
+          "api_key": "API key",
+          "refresh_token": "Refresh token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "iRA.ev rejected this session. Check the vehicle ID, API key, and refresh token.",
+      "cannot_connect": "Cannot reach the iRA.ev service.",
+      "unknown": "iRA.ev returned an unexpected response."
+    },
+    "abort": {
+      "already_configured": "This car is already set up."
+    }
+  }
+}
