@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+from uuid import uuid4
 
 import aiohttp
 
@@ -11,10 +13,20 @@ from .const import (
     APP_VERSION,
     CLIENT_ID,
     CLIENT_SECRET,
+    COMMAND_PATH,
     HEALTH_PATH,
     REFRESH_PATH,
+    STATE_PATH,
 )
-from .parser import VehicleStatus, parse_vehicle_health
+from .parser import (
+    VehicleStatus,
+    ac_command_body,
+    parse_air_conditioning,
+    parse_refresh_tokens,
+    parse_vehicle_health,
+)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class IraError(Exception):
@@ -52,7 +64,38 @@ class IraClient:
         """
         access_token, rotated = await self._async_refresh()
         status = await self._async_health(access_token)
+        try:
+            ac_on = await self._async_air_conditioning(access_token)
+        except IraError as err:
+            _LOGGER.debug("Air conditioning state was not available: %s", err)
+        else:
+            status = VehicleStatus(
+                status.battery_percent,
+                status.charging,
+                status.charge_minutes_remaining,
+                ac_on,
+            )
         return status, rotated
+
+    async def async_set_air_conditioning(
+        self, on: bool, minutes: int
+    ) -> str | None:
+        """Start the air conditioner for a number of minutes, or stop it."""
+        access_token, rotated = await self._async_refresh()
+        command, body = ac_command_body(on, minutes, str(uuid4()))
+        await self._async_request(
+            "POST",
+            COMMAND_PATH,
+            json_body=body,
+            headers={
+                **self._vehicle_headers(access_token),
+                "command-name": command,
+                "X-Request-ID": str(uuid4()),
+                "Accept": "application/json",
+                "Cache-Control": "no-cache, no-store",
+            },
+        )
+        return rotated
 
     async def _async_refresh(self) -> tuple[str, str | None]:
         body = {"refreshToken": self.refresh_token}
@@ -67,12 +110,10 @@ class IraClient:
                 "x-api-key": self._api_key,
             },
         )
-        results = payload.get("results") or {}
-        access_token = results.get("accessToken")
+        access_token, rotated = parse_refresh_tokens(payload)
         if not access_token:
             raise IraAuthError("The session refresh did not return an access token")
-        rotated = results.get("refreshToken")
-        if isinstance(rotated, str) and rotated and rotated != self.refresh_token:
+        if rotated and rotated != self.refresh_token:
             self.refresh_token = rotated
             return access_token, rotated
         return access_token, None
@@ -81,15 +122,26 @@ class IraClient:
         payload = await self._async_request(
             "GET",
             HEALTH_PATH,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "client_id": CLIENT_ID,
-                "vehicleId": self._vehicle_id,
-                "x-api-key": self._api_key,
-                "App-Version": APP_VERSION,
-            },
+            headers=self._vehicle_headers(access_token),
         )
         return parse_vehicle_health(payload)
+
+    async def _async_air_conditioning(self, access_token: str) -> bool | None:
+        payload = await self._async_request(
+            "GET",
+            STATE_PATH,
+            headers=self._vehicle_headers(access_token),
+        )
+        return parse_air_conditioning(payload)
+
+    def _vehicle_headers(self, access_token: str) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {access_token}",
+            "client_id": CLIENT_ID,
+            "vehicleId": self._vehicle_id,
+            "x-api-key": self._api_key,
+            "App-Version": APP_VERSION,
+        }
 
     async def _async_request(
         self,

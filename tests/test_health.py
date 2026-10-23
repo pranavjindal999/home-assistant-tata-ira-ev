@@ -15,6 +15,9 @@ _MODULE = importlib.util.module_from_spec(_SPEC)
 sys.modules["tata_ira_parser"] = _MODULE
 _SPEC.loader.exec_module(_MODULE)
 parse_vehicle_health = _MODULE.parse_vehicle_health
+parse_air_conditioning = _MODULE.parse_air_conditioning
+parse_refresh_tokens = _MODULE.parse_refresh_tokens
+ac_command_body = _MODULE.ac_command_body
 
 
 class ParseVehicleHealthTests(unittest.TestCase):
@@ -53,6 +56,47 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertIsNone(status.battery_percent)
         self.assertIsNone(status.charging)
         self.assertIsNone(status.charge_minutes_remaining)
+        self.assertIsNone(status.ac_on)
+
+
+class AirConditioningTests(unittest.TestCase):
+    def test_vehicle_state_reports_air_conditioning(self) -> None:
+        self.assertFalse(parse_air_conditioning({"results": {"airConditionOn": False}}))
+        self.assertTrue(parse_air_conditioning({"results": {"acState": True}}))
+        self.assertIsNone(parse_air_conditioning({"results": {}}))
+
+    def test_start_sends_duration_in_seconds(self) -> None:
+        command, body = ac_command_body(True, 10, "trace-1")
+        self.assertEqual(command, "StartAcCommand")
+        self.assertEqual(body["config"]["settimer"], "600")
+        self.assertEqual(body["commandTraceId"], "trace-1")
+
+    def test_zero_minutes_is_allowed(self) -> None:
+        command, body = ac_command_body(True, 0, "trace-0")
+        self.assertEqual(command, "StartAcCommand")
+        self.assertEqual(body["config"]["settimer"], "0")
+
+    def test_duration_above_thirty_minutes_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            ac_command_body(True, 31, "trace-2")
+
+    def test_stop_clears_the_timer(self) -> None:
+        command, body = ac_command_body(False, 10, "trace-3")
+        self.assertEqual(command, "StopAcCommand")
+        self.assertIsNone(body["config"])
+        self.assertEqual(body["commandTraceId"], "trace-3")
+
+    def test_refresh_accepts_top_level_and_nested_tokens(self) -> None:
+        self.assertEqual(
+            parse_refresh_tokens({"accessToken": "access", "expires_in": 3600}),
+            ("access", None),
+        )
+        self.assertEqual(
+            parse_refresh_tokens(
+                {"results": {"accessToken": "access", "refreshToken": "next"}}
+            ),
+            ("access", "next"),
+        )
 
 
 if __name__ == "__main__":
