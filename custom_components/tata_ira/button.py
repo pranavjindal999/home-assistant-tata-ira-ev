@@ -25,7 +25,7 @@ async def async_setup_entry(
 
 
 class RefreshButton(ButtonEntity):
-    """Fetch battery, charging, and air conditioning from the car now."""
+    """Fetch battery, charging, air conditioning, and lock state from the car now."""
 
     _attr_has_entity_name = True
     _attr_name = "Refresh"

@@ -1,4 +1,4 @@
-"""Poll battery, charging, and air conditioning for one Tata EV."""
+"""Poll battery, charging, air conditioning, and lock state for one Tata EV."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
-    """Battery percentage, charging state, and air conditioning."""
+    """Battery percentage, charging, air conditioning, and lock state."""
 
     def __init__(
         self, hass: HomeAssistant, client: IraClient, entry: ConfigEntry
@@ -42,6 +42,16 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self._store_refresh_token(rotated)
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, ac_on=on))
+
+    async def async_set_locked(self, locked: bool) -> None:
+        """Lock or unlock the car."""
+        try:
+            rotated = await self.client.async_set_locked(locked)
+        except (IraAuthError, IraConnectionError, IraError) as err:
+            raise UpdateFailed(str(err) or err.__class__.__name__) from err
+        self._store_refresh_token(rotated)
+        if self.data is not None:
+            self.async_set_updated_data(replace(self.data, locked=locked))
 
     async def _async_update_data(self) -> VehicleStatus:
         try:

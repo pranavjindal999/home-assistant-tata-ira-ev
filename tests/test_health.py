@@ -18,6 +18,7 @@ parse_vehicle_health = _MODULE.parse_vehicle_health
 parse_air_conditioning = _MODULE.parse_air_conditioning
 parse_refresh_tokens = _MODULE.parse_refresh_tokens
 ac_command_body = _MODULE.ac_command_body
+lock_command_body = _MODULE.lock_command_body
 
 
 class ParseVehicleHealthTests(unittest.TestCase):
@@ -57,6 +58,13 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertIsNone(status.charging)
         self.assertIsNone(status.charge_minutes_remaining)
         self.assertIsNone(status.ac_on)
+        self.assertIsNone(status.locked)
+
+    def test_lock_state_false_means_locked(self) -> None:
+        locked = parse_vehicle_health({"results": {"vehicleLockState": False}})
+        unlocked = parse_vehicle_health({"results": {"vehicleLockState": True}})
+        self.assertTrue(locked.locked)
+        self.assertFalse(unlocked.locked)
 
 
 class AirConditioningTests(unittest.TestCase):
@@ -97,6 +105,14 @@ class AirConditioningTests(unittest.TestCase):
             ),
             ("access", "next"),
         )
+
+    def test_lock_and_unlock_commands(self) -> None:
+        command, body = lock_command_body(True, "trace-lock")
+        self.assertEqual(command, "LockVehicleCommand")
+        self.assertIsNone(body["config"])
+        command, body = lock_command_body(False, "trace-unlock")
+        self.assertEqual(command, "UnlockVehicleCommand")
+        self.assertEqual(body["commandTraceId"], "trace-unlock")
 
 
 if __name__ == "__main__":

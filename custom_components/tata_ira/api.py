@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from .const import (
 from .parser import (
     VehicleStatus,
     ac_command_body,
+    lock_command_body,
     parse_air_conditioning,
     parse_refresh_tokens,
     parse_vehicle_health,
@@ -69,20 +71,25 @@ class IraClient:
         except IraError as err:
             _LOGGER.debug("Air conditioning state was not available: %s", err)
         else:
-            status = VehicleStatus(
-                status.battery_percent,
-                status.charging,
-                status.charge_minutes_remaining,
-                ac_on,
-            )
+            status = replace(status, ac_on=ac_on)
         return status, rotated
 
     async def async_set_air_conditioning(
         self, on: bool, minutes: int
     ) -> str | None:
         """Start the air conditioner for a number of minutes, or stop it."""
-        access_token, rotated = await self._async_refresh()
         command, body = ac_command_body(on, minutes, str(uuid4()))
+        return await self._async_vehicle_command(command, body)
+
+    async def async_set_locked(self, locked: bool) -> str | None:
+        """Lock or unlock the car."""
+        command, body = lock_command_body(locked, str(uuid4()))
+        return await self._async_vehicle_command(command, body)
+
+    async def _async_vehicle_command(
+        self, command: str, body: dict[str, Any]
+    ) -> str | None:
+        access_token, rotated = await self._async_refresh()
         await self._async_request(
             "POST",
             COMMAND_PATH,

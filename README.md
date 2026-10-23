@@ -6,6 +6,7 @@ Home Assistant sensors and controls for a Tata EV that uses the iRA.ev app:
 - Charging on or off
 - Minutes remaining while the car is charging
 - Cabin air conditioning: turn it on for 0 to 30 minutes, or turn it off
+- Lock or unlock the car, and whether it is locked
 
 Readings refresh every 30 seconds. Press Refresh to update immediately. This is unofficial and is not part of Tata Motors.
 
@@ -38,6 +39,7 @@ Those requests go to `evcx.api.tatamotors`. If you sign out of iRA.ev or change 
 | `sensor.tata_ira_ev_charge_time_remaining` | Minutes left, only while charging |
 | `switch.tata_ira_ev_air_conditioning` | On starts the air conditioner. Off stops it |
 | `number.tata_ira_ev_air_conditioning_duration` | How long the next start runs, from 0 to 30 minutes |
-| `button.tata_ira_ev_refresh` | Read battery, charging, and air conditioning now |
+| `button.tata_ira_ev_refresh` | Read the car now |
+| `lock.tata_ira_ev_lock` | Locked or unlocked. Lock and unlock the car |
 
 Set the duration, then turn the switch on. The car runs the air conditioner for that many minutes at 25°. Turning the switch off stops it. The switch follows the car's reported air-conditioning state, which can take a few minutes to change.

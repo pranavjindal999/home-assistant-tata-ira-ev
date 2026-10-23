@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect the Tata EV",
-        "description": "Battery, charging, and air conditioning are read from iRA.ev every 30 seconds. Use the vehicleId and x-api-key headers from a vehicle-health request, and the refreshToken from a refresh-token request.",
+        "description": "Battery, charging, air conditioning, and lock state are read from iRA.ev every 30 seconds. Use the vehicleId and x-api-key headers from a vehicle-health request, and the refreshToken from a refresh-token request.",
         "data": {
           "vehicle_id": "Vehicle ID",
           "api_key": "API key",

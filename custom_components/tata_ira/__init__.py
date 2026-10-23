@@ -14,6 +14,7 @@ from .coordinator import IraCoordinator
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.LOCK,
     Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,

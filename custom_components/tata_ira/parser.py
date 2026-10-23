@@ -11,12 +11,13 @@ AC_MINUTES_MAX = 30
 
 @dataclass(frozen=True)
 class VehicleStatus:
-    """Battery, charging, and air-conditioning values for one car."""
+    """Battery, charging, air conditioning, and lock values for one car."""
 
     battery_percent: float | None
     charging: bool | None
     charge_minutes_remaining: int | None
     ac_on: bool | None = None
+    locked: bool | None = None
 
 
 def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
@@ -29,10 +30,13 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
     remaining = None
     if charging and hours is not None and minutes is not None:
         remaining = int(hours) * 60 + int(minutes)
+    # The app shows "locked" when vehicleLockState is false.
+    lock_state = results.get("vehicleLockState")
     return VehicleStatus(
         battery_percent=None if battery is None else float(battery),
         charging=None if charging is None else bool(charging),
         charge_minutes_remaining=remaining,
+        locked=None if lock_state is None else not bool(lock_state),
     )
 
 
@@ -83,3 +87,9 @@ def ac_command_body(on: bool, minutes: int, trace_id: str) -> tuple[str, dict[st
         "StopAcCommand",
         {"config": None, "commandTraceId": trace_id},
     )
+
+
+def lock_command_body(locked: bool, trace_id: str) -> tuple[str, dict[str, Any]]:
+    """Build the lock or unlock command the iRA.ev app sends."""
+    command = "LockVehicleCommand" if locked else "UnlockVehicleCommand"
+    return command, {"config": None, "commandTraceId": trace_id}
