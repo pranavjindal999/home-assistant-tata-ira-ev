@@ -34,6 +34,7 @@ parse_command_status = _MODULE.parse_command_status
 parse_device_awake = _MODULE.parse_device_awake
 command_progress = _MODULE.command_progress
 service_error = _MODULE.service_error
+retry_wait_seconds = _MODULE.retry_wait_seconds
 
 
 class ParseVehicleHealthTests(unittest.TestCase):
@@ -230,6 +231,14 @@ class AirConditioningTests(unittest.TestCase):
         self.assertEqual(command_progress("in progress"), "wait")
         self.assertEqual(command_progress("success"), "done")
         self.assertEqual(command_progress("failure"), "failed")
+
+    def test_retry_wait_honors_retry_after_and_backs_off(self) -> None:
+        self.assertEqual(retry_wait_seconds("15", 1), 15)
+        self.assertEqual(retry_wait_seconds(" 2 ", 4), 2)
+        self.assertEqual(retry_wait_seconds("not-a-number", 1), 2)
+        self.assertEqual(retry_wait_seconds(None, 1), 2)
+        self.assertEqual(retry_wait_seconds(None, 3), 8)
+        self.assertEqual(retry_wait_seconds("500", 1), 120)
 
 
 if __name__ == "__main__":

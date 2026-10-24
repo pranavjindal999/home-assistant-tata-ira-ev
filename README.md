@@ -11,7 +11,7 @@ Home Assistant sensors and controls for a Tata EV that uses the iRA.ev app:
 - Remote start, for the same duration as the air conditioner
 - Lock or unlock the car, and whether it is locked
 
-Readings refresh every 30 seconds. Press Refresh to update immediately. Home Assistant also keeps the car's command link awake, the same link the phone app has to open again after it has been left for a few hours. A command can run without waiting for that connection. This is unofficial and is not part of Tata Motors.
+Readings refresh every 30 seconds. Press Refresh to update immediately. Home Assistant opens the car's command link as soon as it starts and keeps that link awake. A rate limit or a short outage does not clear Connected, and a failed check is tried again within a few seconds. This is unofficial and is not part of Tata Motors.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pranavjindal999&repository=tata-ira-ev&category=integration)
 

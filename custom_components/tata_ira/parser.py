@@ -9,6 +9,22 @@ AC_MINUTES_MIN = 0
 AC_MINUTES_MAX = 30
 
 
+def retry_wait_seconds(retry_after: str | None, attempt: int) -> float:
+    """How long to wait before repeating a rate-limited or failed request.
+
+    ``attempt`` starts at 1. A Retry-After header wins. Otherwise the wait
+    doubles, and it never exceeds two minutes.
+    """
+    if retry_after:
+        try:
+            seconds = float(retry_after.strip())
+        except ValueError:
+            seconds = 0
+        if seconds > 0:
+            return min(seconds, 120)
+    return float(min(2**attempt, 60))
+
+
 @dataclass(frozen=True)
 class VehicleStatus:
     """Battery, charging, air conditioning, and lock values for one car."""

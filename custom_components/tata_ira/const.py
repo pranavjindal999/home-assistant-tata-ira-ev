@@ -14,8 +14,10 @@ CONF_PHONE = "phone"
 CONF_OTP = "otp"
 
 POLL_INTERVAL = timedelta(seconds=30)
-# How often to confirm the car's command link is still awake.
-KEEP_CONNECTED_INTERVAL = timedelta(minutes=8)
+# While the command link is awake, confirm it before the car can go to sleep.
+KEEP_CONNECTED_INTERVAL = timedelta(minutes=2)
+# After startup, or after the car reports it is asleep, try again quickly.
+RECONNECT_INTERVAL = timedelta(seconds=15)
 
 API_HOST = "https://evcx.api.tatamotors"
 REFRESH_PATH = "/mobile/customer/api/v1/refresh-token"

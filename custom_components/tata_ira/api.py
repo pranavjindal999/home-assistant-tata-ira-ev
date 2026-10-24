@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
@@ -52,8 +53,12 @@ from .parser import (
     parse_refresh_tokens,
     parse_vehicle_health,
     parse_vehicle_ids,
+    retry_wait_seconds,
     service_error,
 )
+
+_RETRY_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+_REQUEST_ATTEMPTS = 5
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,7 +95,10 @@ class IraClient:
         self.refresh_token = refresh_token
         self._vehicle_id = vehicle_id
         self._api_key = api_key
+        self.link_connected: bool | None = None
         self._refresh_lock = asyncio.Lock()
+        self._api_lock = asyncio.Lock()
+        self._command_lock = asyncio.Lock()
 
     async def async_keep_connected(self) -> tuple[bool, str | None]:
         """Wake the command link when it has gone to sleep.
@@ -98,6 +106,10 @@ class IraClient:
         Logging a command does not run it. The command itself is a later request,
         and this method never sends that request.
         """
+        async with self._command_lock:
+            return await self._async_keep_connected_locked()
+
+    async def _async_keep_connected_locked(self) -> tuple[bool, str | None]:
         access_token, rotated = await self._async_refresh()
         headers = {
             **self._vehicle_headers(access_token),
@@ -117,10 +129,16 @@ class IraClient:
         )
         self._raise_service_error(logged)
         trace_id, connected = parse_command_log(logged)
-        if connected is True:
-            return True, rotated
         if not trace_id:
-            return False, rotated
+            raise IraError("iRA.ev did not return a command id")
+        if connected is True:
+            awake = await self._async_read_awake(access_token, trace_id)
+            if awake is True:
+                self.link_connected = True
+                return True, rotated
+            if awake is None:
+                self.link_connected = True
+                return True, rotated
         await self._async_wake(access_token, trace_id)
         return True, rotated
 
@@ -226,16 +244,16 @@ class IraClient:
         """
         last_error: IraError | None = None
         rotated: str | None = None
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 rotated_now = await self._async_send_command(command, body_for)
-            except (IraAuthError, IraConnectionError):
+            except IraAuthError:
                 raise
             except IraError as err:
                 last_error = err
-                if not _temporary_command_error(err) or attempt == 2:
+                if not _temporary_command_error(err) or attempt == 3:
                     break
-                await asyncio.sleep(4)
+                await asyncio.sleep(retry_wait_seconds(None, attempt + 1))
                 continue
             if rotated_now:
                 rotated = rotated_now
@@ -251,6 +269,12 @@ class IraClient:
         return rotated
 
     async def _async_send_command(
+        self, command: str, body_for: Callable[[str], dict[str, Any]]
+    ) -> str | None:
+        async with self._command_lock:
+            return await self._async_send_command_locked(command, body_for)
+
+    async def _async_send_command_locked(
         self, command: str, body_for: Callable[[str], dict[str, Any]]
     ) -> str | None:
         access_token, rotated = await self._async_refresh()
@@ -276,6 +300,8 @@ class IraClient:
             raise IraError("iRA.ev did not return a command id")
         if connected is False:
             await self._async_wake(access_token, trace_id)
+        else:
+            self.link_connected = True
         result = await self._async_request(
             "POST",
             COMMAND_PATH,
@@ -290,31 +316,64 @@ class IraClient:
         await self._async_wait_for_command(access_token, result)
         return rotated
 
-    async def _async_wake(self, access_token: str, trace_id: str) -> None:
-        """Wake the command unit, then wait until it reports it is awake."""
-        headers = {
+    async def _async_read_awake(self, access_token: str, trace_id: str) -> bool | None:
+        """Read the command unit. None means the status did not say."""
+        try:
+            status = await self._async_request(
+                "GET",
+                DEVICE_STATUS_PATH,
+                headers=self._trace_headers(access_token, trace_id),
+            )
+        except IraAuthError:
+            raise
+        except IraError:
+            return None
+        return parse_device_awake(status)
+
+    def _trace_headers(self, access_token: str, trace_id: str) -> dict[str, str]:
+        return {
             **self._vehicle_headers(access_token),
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "commandTraceId": trace_id,
             "X-Request-ID": str(uuid4()),
         }
-        try:
-            await self._async_request("GET", WAKE_PATH, headers=headers)
-        except IraError:
-            _LOGGER.debug("Wake request was not accepted")
-        for _ in range(20):
-            await asyncio.sleep(3)
+
+    async def _async_wake(self, access_token: str, trace_id: str) -> None:
+        """Wake the command unit, then wait until it reports it is awake."""
+        deadline = time.monotonic() + 150
+        last_wake = 0.0
+        wakes = 0
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            if wakes < 4 and now - last_wake >= 30:
+                try:
+                    await self._async_request(
+                        "GET",
+                        WAKE_PATH,
+                        headers=self._trace_headers(access_token, trace_id),
+                    )
+                except IraAuthError:
+                    raise
+                except IraError:
+                    _LOGGER.debug("Wake request was not accepted")
+                wakes += 1
+                last_wake = time.monotonic()
+            await asyncio.sleep(4)
             try:
                 status = await self._async_request(
                     "GET",
                     DEVICE_STATUS_PATH,
-                    headers={**headers, "X-Request-ID": str(uuid4())},
+                    headers=self._trace_headers(access_token, trace_id),
                 )
+            except IraAuthError:
+                raise
             except IraError:
                 continue
             if parse_device_awake(status) is True:
+                self.link_connected = True
                 return
+        self.link_connected = False
         raise IraError("The car is not connected")
 
     async def _async_wait_for_command(
@@ -436,31 +495,85 @@ class IraClient:
         headers: dict[str, str],
         json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        try:
-            async with self._session.request(
-                method,
-                f"{API_HOST}{path}",
-                headers=headers,
-                json=json_body,
-                timeout=aiohttp.ClientTimeout(total=20),
-            ) as response:
-                if response.status in (401, 403):
-                    raise IraAuthError("iRA.ev rejected this session")
-                if response.status >= 400:
-                    raise IraError(f"iRA.ev returned HTTP {response.status}")
-                payload = await response.json(content_type=None)
-        except (IraError, IraAuthError):
-            raise
-        except (aiohttp.ClientError, TimeoutError) as err:
-            raise IraConnectionError("Cannot reach the iRA.ev service") from err
-        if not isinstance(payload, dict):
-            raise IraError("iRA.ev returned an unexpected response")
-        return payload
+        """Send one request, repeating rate limits and temporary outages."""
+        last_status = 0
+        for attempt in range(1, _REQUEST_ATTEMPTS + 1):
+            try:
+                async with self._api_lock:
+                    async with self._session.request(
+                        method,
+                        f"{API_HOST}{path}",
+                        headers=headers,
+                        json=json_body,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as response:
+                        if response.status in (401, 403):
+                            raise IraAuthError("iRA.ev rejected this session")
+                        if response.status in _RETRY_STATUSES:
+                            last_status = response.status
+                            wait = retry_wait_seconds(
+                                response.headers.get("Retry-After"), attempt
+                            )
+                        elif response.status >= 400:
+                            raise IraError(f"iRA.ev returned HTTP {response.status}")
+                        else:
+                            payload = await response.json(content_type=None)
+                            wait = None
+            except IraAuthError:
+                raise
+            except IraError:
+                raise
+            except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+                if attempt == _REQUEST_ATTEMPTS:
+                    raise IraConnectionError(
+                        "Cannot reach the iRA.ev service"
+                    ) from err
+                wait = retry_wait_seconds(None, attempt)
+                _LOGGER.debug(
+                    "iRA.ev request failed (%s), retrying in %s seconds", err, wait
+                )
+                await asyncio.sleep(wait)
+                continue
+            if wait is None:
+                if not isinstance(payload, dict):
+                    raise IraError("iRA.ev returned an unexpected response")
+                return payload
+            if attempt == _REQUEST_ATTEMPTS:
+                raise IraError(f"iRA.ev returned HTTP {last_status}")
+            _LOGGER.debug(
+                "iRA.ev returned HTTP %s, retrying in %s seconds", last_status, wait
+            )
+            await asyncio.sleep(wait)
+        raise IraError(f"iRA.ev returned HTTP {last_status or 429}")
+
+
+def transient_api_error(err: IraError) -> bool:
+    """True for rate limits, timeouts, and other errors that should be retried."""
+    if isinstance(err, IraAuthError):
+        return False
+    if isinstance(err, IraConnectionError):
+        return True
+    text = str(err).lower()
+    return any(
+        marker in text
+        for marker in (
+            "429",
+            "408",
+            "500",
+            "502",
+            "503",
+            "504",
+            "rate",
+            "too many",
+            "temporarily unavailable",
+            "timed out",
+            "timeout",
+        )
+    )
 
 
 def _temporary_command_error(err: IraError) -> bool:
-    text = str(err).lower()
-    return "not connected" in text or "temporarily unavailable" in text
+    return transient_api_error(err) or "not connected" in str(err).lower()
 
 
 def _login_headers(access_token: str | None = None) -> dict[str, str]:

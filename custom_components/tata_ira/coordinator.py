@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
 from dataclasses import replace
-from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import IraAuthError, IraClient, IraConnectionError, IraError
+from .api import IraAuthError, IraClient, IraConnectionError, IraError, transient_api_error
 from .parser import VehicleStatus
-from .const import CONF_REFRESH_TOKEN, DOMAIN, KEEP_CONNECTED_INTERVAL, POLL_INTERVAL
+from .const import (
+    CONF_REFRESH_TOKEN,
+    DOMAIN,
+    KEEP_CONNECTED_INTERVAL,
+    POLL_INTERVAL,
+    RECONNECT_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +40,8 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self.entry = entry
         self.ac_minutes = 10
         self.connected: bool | None = None
-        self._connect_unsub: Callable[[], None] | None = None
+        self._connect_task: asyncio.Task[None] | None = None
+        self._connect_stop = asyncio.Event()
 
     async def async_set_air_conditioning(self, on: bool) -> None:
         """Start the air conditioner for the saved duration, or stop it."""
@@ -45,6 +50,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         except (IraAuthError, IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
+        self._adopt_link_state()
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, ac_on=on))
 
@@ -82,6 +88,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         except (IraAuthError, IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
+        self._adopt_link_state()
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, engine_on=on))
 
@@ -92,6 +99,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         except (IraAuthError, IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
+        self._adopt_link_state()
 
     async def _async_set_switch(
         self, on: bool, on_command: str, off_command: str, field: str
@@ -103,6 +111,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         except (IraAuthError, IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
+        self._adopt_link_state()
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, **{field: on}))
 
@@ -113,37 +122,68 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         except (IraAuthError, IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
+        self._adopt_link_state()
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, locked=locked))
 
     def async_start_connection(self) -> None:
-        """Keep the car's command link awake while Home Assistant is running."""
-        if self._connect_unsub is not None:
+        """Open the command link now and keep it awake."""
+        if self._connect_task is not None:
             return
-        self._connect_unsub = async_track_time_interval(
-            self.hass, self._async_keep_connected, KEEP_CONNECTED_INTERVAL
-        )
-        self.hass.async_create_task(self._async_keep_connected(datetime.now()))
+        self._connect_stop.clear()
+        self._connect_task = self.hass.async_create_task(self._async_connection_loop())
 
     def async_stop_connection(self) -> None:
         """Stop keeping the command link awake."""
-        if self._connect_unsub is not None:
-            self._connect_unsub()
-            self._connect_unsub = None
+        self._connect_stop.set()
+        if self._connect_task is not None:
+            self._connect_task.cancel()
+            self._connect_task = None
 
-    async def _async_keep_connected(self, _now: datetime) -> None:
-        try:
-            connected, rotated = await self.client.async_keep_connected()
-        except IraAuthError:
-            self.connected = False
-            self._request_reauth()
-        except (IraConnectionError, IraError) as err:
-            self.connected = False
-            _LOGGER.debug("The car command link is not awake: %s", err)
-        else:
-            self.connected = connected
-            self._store_refresh_token(rotated)
-        self.async_update_listeners()
+    async def _async_connection_loop(self) -> None:
+        """Connect at startup, then keep retrying for as long as this runs."""
+        failures = 0
+        while not self._connect_stop.is_set():
+            delay = RECONNECT_INTERVAL.total_seconds()
+            try:
+                _connected, rotated = await self.client.async_keep_connected()
+            except asyncio.CancelledError:
+                raise
+            except IraAuthError:
+                self._set_connected(False)
+                self._request_reauth()
+                return
+            except Exception as err:
+                failures += 1
+                if isinstance(err, IraError) and not transient_api_error(err):
+                    self._set_connected(False)
+                _LOGGER.debug("Command link check failed: %s", err)
+                delay = min(60, RECONNECT_INTERVAL.total_seconds() * failures)
+            else:
+                failures = 0
+                self._store_refresh_token(rotated)
+                self._set_connected(self.client.link_connected)
+                if self.connected is True:
+                    delay = KEEP_CONNECTED_INTERVAL.total_seconds()
+            self.async_update_listeners()
+            try:
+                await asyncio.wait_for(self._connect_stop.wait(), timeout=delay)
+            except TimeoutError:
+                continue
+            return
+
+    def _set_connected(self, connected: bool | None) -> None:
+        if connected is self.connected:
+            return
+        self.connected = connected
+        if connected is True:
+            _LOGGER.info("Car command link is connected")
+        elif connected is False:
+            _LOGGER.warning("Car command link is not connected; retrying")
+
+    def _adopt_link_state(self) -> None:
+        if self.client.link_connected is not None:
+            self._set_connected(self.client.link_connected)
 
     async def _async_update_data(self) -> VehicleStatus:
         try:
@@ -152,6 +192,9 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
             self._request_reauth()
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         except (IraConnectionError, IraError) as err:
+            if self.data is not None and transient_api_error(err):
+                _LOGGER.debug("Keeping the last car reading after %s", err)
+                return self.data
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
         return status
