@@ -2,6 +2,8 @@
 
 Home Assistant custom integration for a Tata Motors electric vehicle that uses the [iRA.ev](https://www.tatamotors.com/) app. It reads the car every 30 seconds and sends the same remote commands the app sends: air conditioning, lights, horn, and lock.
 
+The **Tata iRA.ev** dashboard card puts the battery, the controls, and the sensors on one card.
+
 This project is unofficial and is not part of Tata Motors.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pranavjindal999&repository=home-assistant-tata-ira-ev&category=integration)
@@ -111,6 +113,17 @@ The form asks for the country code and the mobile number on the iRA.ev account. 
 The mobile number and the code are not stored. Home Assistant keeps the session for that car. If iRA.ev later rejects the session, Home Assistant asks for the mobile number and a new code.
 
 Each car can be added once.
+
+## Dashboard
+
+After a restart, edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one.
+
+With more than one car, pick the car on the card, or set any entity from that car:
+
+```yaml
+type: custom:tata-ira-card
+entity: sensor.tata_ira_ev_battery
+```
 
 ## Entities
 

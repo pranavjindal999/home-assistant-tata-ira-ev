@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -20,6 +25,25 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+CARD_PATH = "/tata_ira/tata-ira-card.js"
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Serve the dashboard card."""
+    if hass.data.get(DOMAIN, {}).get("card"):
+        return True
+    card = Path(__file__).parent / "www" / "tata-ira-card.js"
+    version = json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(CARD_PATH, str(card), False)]
+        )
+    except RuntimeError:
+        pass
+    add_extra_js_url(hass, f"{CARD_PATH}?v={version}")
+    hass.data.setdefault(DOMAIN, {})["card"] = True
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
