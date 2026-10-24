@@ -123,6 +123,25 @@ def parse_ref_id(payload: dict[str, Any]) -> str | None:
     return ref_id
 
 
+def parse_auth_code(payload: dict[str, Any]) -> str | None:
+    """Read the auth code returned with a verified sign-in code."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None
+    auth_code = results.get("authCode")
+    if not isinstance(auth_code, str) or not auth_code:
+        return None
+    return auth_code
+
+
+def parse_user_type(payload: dict[str, Any]) -> str:
+    """Read whether the phone belongs to an existing account."""
+    results = payload.get("results")
+    if isinstance(results, dict) and results.get("userType") in ("existing", "new"):
+        return results["userType"]
+    return "existing"
+
+
 def parse_code_verifier(payload: dict[str, Any]) -> str | None:
     """Read the verifier returned after the sign-in code is accepted."""
     results = payload.get("results")

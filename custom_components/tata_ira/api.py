@@ -30,8 +30,10 @@ from .parser import (
     lock_command_body,
     otp_verify_body,
     parse_air_conditioning,
+    parse_auth_code,
     parse_code_verifier,
     parse_login_tokens,
+    parse_user_type,
     parse_ref_id,
     parse_refresh_tokens,
     parse_vehicle_health,
@@ -210,8 +212,8 @@ def _login_headers(access_token: str | None = None) -> dict[str, str]:
 
 async def async_send_otp(
     session: aiohttp.ClientSession, country_code: str, phone: str
-) -> str:
-    """Text a sign-in code and return the reference id for that code."""
+) -> tuple[str, str]:
+    """Text a sign-in code and return its reference id and account type."""
     payload = await _async_login_request(
         session,
         "POST",
@@ -221,7 +223,7 @@ async def async_send_otp(
     ref_id = parse_ref_id(payload)
     if not ref_id:
         raise IraAuthError("iRA.ev did not send a verification code")
-    return ref_id
+    return ref_id, parse_user_type(payload)
 
 
 async def async_sign_in(
@@ -230,6 +232,7 @@ async def async_sign_in(
     phone: str,
     otp: str,
     ref_id: str,
+    user_type: str,
 ) -> tuple[str, list[str]]:
     """Exchange the sign-in code for a refresh token and the account's cars."""
     verified = await _async_login_request(
@@ -239,13 +242,21 @@ async def async_sign_in(
         json_body=otp_verify_body(country_code, phone, otp, ref_id),
     )
     verifier = parse_code_verifier(verified)
-    if not verifier:
+    auth_code = parse_auth_code(verified)
+    if not verifier or not auth_code:
         raise IraAuthError("That code was not accepted")
     tokens = await _async_login_request(
         session,
         "POST",
         ACCESS_TOKEN_PATH,
         json_body={"codeVerifier": verifier},
+        headers={
+            **_login_headers(),
+            "authCode": auth_code,
+            "userType": user_type,
+            "convertToLoyal": "false",
+            "X-Request-ID": str(uuid4()),
+        },
     )
     access_token, refresh_token = parse_login_tokens(tokens)
     if not access_token or not refresh_token:

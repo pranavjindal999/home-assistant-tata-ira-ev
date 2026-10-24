@@ -19,6 +19,8 @@ parse_air_conditioning = _MODULE.parse_air_conditioning
 parse_refresh_tokens = _MODULE.parse_refresh_tokens
 parse_ref_id = _MODULE.parse_ref_id
 parse_code_verifier = _MODULE.parse_code_verifier
+parse_auth_code = _MODULE.parse_auth_code
+parse_user_type = _MODULE.parse_user_type
 parse_login_tokens = _MODULE.parse_login_tokens
 parse_vehicle_ids = _MODULE.parse_vehicle_ids
 otp_verify_body = _MODULE.otp_verify_body
@@ -118,6 +120,15 @@ class AirConditioningTests(unittest.TestCase):
             parse_code_verifier({"results": {"codeVerifier": "verifier"}}),
             "verifier",
         )
+        self.assertEqual(
+            parse_auth_code({"results": {"authCode": "auth"}}),
+            "auth",
+        )
+        self.assertEqual(
+            parse_user_type({"results": {"userType": "new"}}),
+            "new",
+        )
+        self.assertEqual(parse_user_type({"results": {}}), "existing")
         self.assertEqual(
             parse_login_tokens(
                 {

@@ -50,6 +50,7 @@ class TataIraConfigFlow(ConfigFlow, domain=DOMAIN):
         self._country_code = "91"
         self._phone = ""
         self._ref_id = ""
+        self._user_type = "existing"
         self._refresh_token = ""
         self._vehicle_ids: list[str] = []
 
@@ -64,7 +65,7 @@ class TataIraConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._country_code = country
                 self._phone = phone
                 try:
-                    self._ref_id = await async_send_otp(
+                    self._ref_id, self._user_type = await async_send_otp(
                         async_get_clientsession(self.hass), country, phone
                     )
                 except IraAuthError:
@@ -101,6 +102,7 @@ class TataIraConfigFlow(ConfigFlow, domain=DOMAIN):
                         self._phone,
                         otp,
                         self._ref_id,
+                        self._user_type,
                     )
                 except IraAuthError as err:
                     errors["base"] = (
