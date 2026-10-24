@@ -229,7 +229,10 @@ class AirConditioningTests(unittest.TestCase):
         self.assertEqual(correlation, "42")
         self.assertEqual(command_progress("accepted"), "wait")
         self.assertEqual(command_progress("in progress"), "wait")
+        self.assertEqual(command_progress(""), "wait")
+        self.assertEqual(command_progress(None), "wait")
         self.assertEqual(command_progress("success"), "done")
+        self.assertEqual(command_progress("Success"), "done")
         self.assertEqual(command_progress("failure"), "failed")
 
     def test_retry_wait_honors_retry_after_and_backs_off(self) -> None:

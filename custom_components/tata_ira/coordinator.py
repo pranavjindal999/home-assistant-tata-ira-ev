@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import replace
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -42,17 +44,15 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self.connected: bool | None = None
         self._connect_task: asyncio.Task[None] | None = None
         self._connect_stop = asyncio.Event()
+        self._state_lock = asyncio.Lock()
 
     async def async_set_air_conditioning(self, on: bool) -> None:
         """Start the air conditioner for the saved duration, or stop it."""
-        try:
-            rotated = await self.client.async_set_air_conditioning(on, self.ac_minutes)
-        except (IraAuthError, IraConnectionError, IraError) as err:
-            raise UpdateFailed(str(err) or err.__class__.__name__) from err
-        self._store_refresh_token(rotated)
-        self._adopt_link_state()
-        if self.data is not None:
-            self.async_set_updated_data(replace(self.data, ac_on=on))
+        await self._async_run_command(
+            lambda: self.client.async_set_air_conditioning(on, self.ac_minutes),
+            "ac_on",
+            on,
+        )
 
     async def async_set_approach_lights(self, on: bool) -> None:
         """Turn the approach lights on or off."""
@@ -81,50 +81,44 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
             "hazard_lights",
         )
 
-    async def async_set_engine(self, on: bool) -> None:
-        """Start the car for the saved duration, or stop it."""
-        try:
-            rotated = await self.client.async_set_engine(on, self.ac_minutes)
-        except (IraAuthError, IraConnectionError, IraError) as err:
-            raise UpdateFailed(str(err) or err.__class__.__name__) from err
-        self._store_refresh_token(rotated)
-        self._adopt_link_state()
-        if self.data is not None:
-            self.async_set_updated_data(replace(self.data, engine_on=on))
-
     async def async_honk(self) -> None:
         """Sound the horn."""
-        try:
-            rotated = await self.client.async_honk()
-        except (IraAuthError, IraConnectionError, IraError) as err:
-            raise UpdateFailed(str(err) or err.__class__.__name__) from err
-        self._store_refresh_token(rotated)
-        self._adopt_link_state()
+        await self._async_run_command(self.client.async_honk, None, None)
 
     async def _async_set_switch(
         self, on: bool, on_command: str, off_command: str, field: str
     ) -> None:
-        try:
-            rotated = await self.client.async_set_switch(
-                on, on_command, off_command, field
-            )
-        except (IraAuthError, IraConnectionError, IraError) as err:
-            raise UpdateFailed(str(err) or err.__class__.__name__) from err
-        self._store_refresh_token(rotated)
-        self._adopt_link_state()
-        if self.data is not None:
-            self.async_set_updated_data(replace(self.data, **{field: on}))
+        await self._async_run_command(
+            lambda: self.client.async_set_switch(on, on_command, off_command, field),
+            field,
+            on,
+        )
 
     async def async_set_locked(self, locked: bool) -> None:
         """Lock or unlock the car."""
-        try:
-            rotated = await self.client.async_set_locked(locked)
-        except (IraAuthError, IraConnectionError, IraError) as err:
-            raise UpdateFailed(str(err) or err.__class__.__name__) from err
-        self._store_refresh_token(rotated)
-        self._adopt_link_state()
-        if self.data is not None:
-            self.async_set_updated_data(replace(self.data, locked=locked))
+        await self._async_run_command(
+            lambda: self.client.async_set_locked(locked),
+            "locked",
+            locked,
+        )
+
+    async def _async_run_command(
+        self,
+        action: Callable[[], Any],
+        field: str | None,
+        expected: bool | None,
+    ) -> None:
+        """Run a command, then keep the controls unchanged until the car reports it."""
+        async with self._state_lock:
+            try:
+                rotated = await action()
+            except (IraAuthError, IraConnectionError, IraError) as err:
+                raise UpdateFailed(str(err) or err.__class__.__name__) from err
+            self._store_refresh_token(rotated)
+            self._adopt_link_state()
+            if field is None or expected is None or self.data is None:
+                return
+            self.async_set_updated_data(replace(self.data, **{field: expected}))
 
     def async_start_connection(self) -> None:
         """Open the command link now and keep it awake."""
@@ -186,6 +180,10 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
             self._set_connected(self.client.link_connected)
 
     async def _async_update_data(self) -> VehicleStatus:
+        async with self._state_lock:
+            return await self._async_fetch_status()
+
+    async def _async_fetch_status(self) -> VehicleStatus:
         try:
             status, rotated = await self.client.async_vehicle_status()
         except IraAuthError as err:

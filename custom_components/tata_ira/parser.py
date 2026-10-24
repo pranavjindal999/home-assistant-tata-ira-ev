@@ -189,15 +189,27 @@ def parse_command_status(payload: dict[str, Any]) -> tuple[str | None, str | Non
 
 
 def command_progress(status: str | None) -> str:
-    """Classify a command status as done, wait, or failed."""
+    """Classify a command status as done, wait, or failed.
+
+    Only an explicit success is finished. Accepted, queued, and missing
+    statuses are still running.
+    """
     if not status:
-        return "done"
-    normalized = status.strip().lower()
-    if normalized in {"accepted", "in progress", "inprogress", "pending", "queued"}:
         return "wait"
+    normalized = status.strip().lower()
     if normalized in {"failure", "failed", "timed out", "timeout", "rejected"}:
         return "failed"
-    return "done"
+    if normalized in {
+        "success",
+        "successful",
+        "completed",
+        "complete",
+        "executed",
+        "done",
+        "ok",
+    }:
+        return "done"
+    return "wait"
 
 
 def parse_command_log(payload: dict[str, Any]) -> tuple[str | None, bool | None]:

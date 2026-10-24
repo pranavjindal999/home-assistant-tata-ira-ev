@@ -8,7 +8,6 @@ Home Assistant sensors and controls for a Tata EV that uses the iRA.ev app:
 - Cabin air conditioning: turn it on for 0 to 30 minutes, or turn it off
 - Approach lights, headlights, and hazard lights
 - Horn
-- Remote start, for the same duration as the air conditioner
 - Lock or unlock the car, and whether it is locked
 
 Readings refresh every 30 seconds. Press Refresh to update immediately. Home Assistant opens the car's command link as soon as it starts and keeps that link awake. A rate limit or a short outage does not clear Connected, and a failed check is tried again within a few seconds. This is unofficial and is not part of Tata Motors.
@@ -36,13 +35,12 @@ If iRA.ev later rejects the saved session, Home Assistant asks for the mobile nu
 | `binary_sensor.tata_ira_ev_connected` | On while the command link is awake |
 | `sensor.tata_ira_ev_charge_time_remaining` | Minutes left, only while charging |
 | `switch.tata_ira_ev_air_conditioning` | On starts the air conditioner. Off stops it |
-| `number.tata_ira_ev_air_conditioning_duration` | How long the next air-conditioning or remote start runs, from 0 to 30 minutes |
+| `number.tata_ira_ev_air_conditioning_duration` | How long the next air-conditioning start runs, from 0 to 30 minutes |
 | `switch.tata_ira_ev_approach_lights` | Approach lights |
 | `switch.tata_ira_ev_headlights` | Headlights |
 | `switch.tata_ira_ev_hazard_lights` | Hazard lights |
-| `switch.tata_ira_ev_remote_start` | On starts the car. Off stops it |
 | `button.tata_ira_ev_horn` | Sound the horn |
 | `button.tata_ira_ev_refresh` | Read the car now |
 | `lock.tata_ira_ev_lock` | Locked or unlocked. Lock and unlock the car |
 
-Set the duration, then turn the switch on. The car runs the air conditioner for that many minutes at 25°. Turning the switch off stops it. The switch follows the car's reported air-conditioning state, which can take a few minutes to change.
+Set the duration, then turn the switch on. The car runs the air conditioner for that many minutes at 25°. Turning the switch off stops it. A switch, the lock, or the horn stays loading on its current state until iRA.ev reports that the command has finished.

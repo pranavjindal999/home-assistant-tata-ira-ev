@@ -37,7 +37,6 @@ from .parser import (
     ac_command_body,
     command_log_body,
     empty_command_body,
-    timed_command_body,
     command_progress,
     lock_command_body,
     parse_command_log,
@@ -189,25 +188,6 @@ class IraClient:
         command = on_command if on else off_command
         return await self._async_vehicle_command(
             command, empty_command_body, matches
-        )
-
-    async def async_set_engine(self, on: bool, minutes: int) -> str | None:
-        """Start the car for a number of minutes, or stop it."""
-
-        async def matches() -> tuple[bool, str | None]:
-            return await self._async_health_flag("engine_on", on)
-
-        current, rotated = await matches()
-        if current:
-            return rotated
-        if on:
-            return await self._async_vehicle_command(
-                "RemoteEngineStartCommand",
-                lambda trace_id: timed_command_body(minutes, trace_id),
-                matches,
-            )
-        return await self._async_vehicle_command(
-            "RemoteEngineStopCommand", empty_command_body, matches
         )
 
     async def async_honk(self) -> str | None:
@@ -380,17 +360,20 @@ class IraClient:
         self, access_token: str, result: dict[str, Any]
     ) -> None:
         status, correlation = parse_command_status(result)
-        if command_progress(status) == "failed":
+        progress = command_progress(status)
+        if progress == "failed":
             raise IraError("The car did not accept the command")
-        if command_progress(status) != "wait" or not correlation:
+        if progress == "done":
             return
+        if not correlation:
+            raise IraError("iRA.ev did not confirm the command")
         headers = {
             **self._vehicle_headers(access_token),
             "Accept": "application/json",
             "Cache-Control": "no-cache, no-store",
             "correlationId": correlation,
         }
-        for _ in range(6):
+        for _ in range(30):
             await asyncio.sleep(3)
             polled = await self._async_request(
                 "GET",

@@ -51,15 +51,6 @@ async def async_setup_entry(
                 unique_id_suffix="hazard_lights",
                 setter="async_set_hazard_lights",
             ),
-            CommandSwitch(
-                coordinator,
-                entry,
-                key="engine_on",
-                name="Remote start",
-                icon="mdi:engine",
-                unique_id_suffix="remote_start",
-                setter="async_set_engine",
-            ),
         ]
     )
 
