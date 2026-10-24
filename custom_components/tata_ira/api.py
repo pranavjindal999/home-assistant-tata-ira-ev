@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -17,6 +19,7 @@ from .const import (
     CHECK_PHONE_PATH,
     CLIENT_ID,
     CLIENT_SECRET,
+    COMMAND_LOG_PATH,
     COMMAND_PATH,
     HEALTH_PATH,
     PROFILE_PATH,
@@ -27,7 +30,9 @@ from .const import (
 from .parser import (
     VehicleStatus,
     ac_command_body,
+    command_log_body,
     lock_command_body,
+    parse_command_log,
     otp_verify_body,
     parse_air_conditioning,
     parse_auth_code,
@@ -96,31 +101,66 @@ class IraClient:
         self, on: bool, minutes: int
     ) -> str | None:
         """Start the air conditioner for a number of minutes, or stop it."""
-        command, body = ac_command_body(on, minutes, str(uuid4()))
-        return await self._async_vehicle_command(command, body)
+        command, _body = ac_command_body(on, minutes, "")
+        return await self._async_vehicle_command(
+            command, lambda trace_id: ac_command_body(on, minutes, trace_id)[1]
+        )
 
     async def async_set_locked(self, locked: bool) -> str | None:
         """Lock or unlock the car."""
-        command, body = lock_command_body(locked, str(uuid4()))
-        return await self._async_vehicle_command(command, body)
+        command, _body = lock_command_body(locked, "")
+        return await self._async_vehicle_command(
+            command, lambda trace_id: lock_command_body(locked, trace_id)[1]
+        )
 
     async def _async_vehicle_command(
-        self, command: str, body: dict[str, Any]
+        self, command: str, body_for: Callable[[str], dict[str, Any]]
     ) -> str | None:
+        """Log the command, then send it with the id the service returns.
+
+        The fingerprint prompt in the app is local and is not part of this request.
+        A response that includes errorData is a failure even when HTTP status is 200.
+        """
         access_token, rotated = await self._async_refresh()
-        await self._async_request(
+        headers = {
+            **self._vehicle_headers(access_token),
+            "Accept": "application/json",
+            "Cache-Control": "no-cache, no-store",
+            "X-Request-ID": str(uuid4()),
+        }
+        logged = await self._async_request(
+            "POST",
+            COMMAND_LOG_PATH,
+            json_body=command_log_body(
+                self._vehicle_id,
+                command,
+                datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            ),
+            headers=headers,
+        )
+        self._raise_service_error(logged)
+        trace_id, connected = parse_command_log(logged)
+        if connected is False:
+            raise IraError("The car is not connected")
+        if not trace_id:
+            raise IraError("iRA.ev did not return a command id")
+        result = await self._async_request(
             "POST",
             COMMAND_PATH,
-            json_body=body,
+            json_body=body_for(trace_id),
             headers={
-                **self._vehicle_headers(access_token),
+                **headers,
                 "command-name": command,
                 "X-Request-ID": str(uuid4()),
-                "Accept": "application/json",
-                "Cache-Control": "no-cache, no-store",
             },
         )
+        self._raise_service_error(result)
         return rotated
+
+    def _raise_service_error(self, payload: dict[str, Any]) -> None:
+        message, _code = service_error(payload)
+        if message:
+            raise IraError(message)
 
     async def _async_refresh(self) -> tuple[str, str | None]:
         body = {"refreshToken": self.refresh_token}

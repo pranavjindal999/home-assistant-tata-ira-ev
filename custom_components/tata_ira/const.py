@@ -23,6 +23,7 @@ ACCESS_TOKEN_PATH = "/mobile/customer/api/v1/access-token"
 PROFILE_PATH = "/mobile/cvp/api/v1/ev/profiles/get-profile"
 HEALTH_PATH = "/mobile/cvp/api/v1/ev/vehicle-health"
 STATE_PATH = "/mobile/cvp/api/v1/ev/vehicle-state"
+COMMAND_LOG_PATH = "/mobile/cvp/api/v1/ev/command-log"
 COMMAND_PATH = "/mobile/cvp/api/v1/ev/vehicle-command"
 
 # Same client identity the official Android app sends. The installed app is 26.9.1.

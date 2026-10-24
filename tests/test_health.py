@@ -26,6 +26,9 @@ parse_vehicle_ids = _MODULE.parse_vehicle_ids
 otp_verify_body = _MODULE.otp_verify_body
 ac_command_body = _MODULE.ac_command_body
 lock_command_body = _MODULE.lock_command_body
+command_log_body = _MODULE.command_log_body
+parse_command_log = _MODULE.parse_command_log
+service_error = _MODULE.service_error
 
 
 class ParseVehicleHealthTests(unittest.TestCase):
@@ -169,6 +172,31 @@ class AirConditioningTests(unittest.TestCase):
         command, body = lock_command_body(False, "trace-unlock")
         self.assertEqual(command, "UnlockVehicleCommand")
         self.assertEqual(body["commandTraceId"], "trace-unlock")
+
+    def test_command_log_uses_the_server_id(self) -> None:
+        body = command_log_body("CAR1", "LockVehicleCommand", "2026-10-24T18:00:00")
+        self.assertEqual(body["commandName"], "LockVehicleCommand")
+        self.assertEqual(body["metadata"], "{LockVehicleCommand:true}")
+        trace_id, connected = parse_command_log(
+            {
+                "results": {
+                    "commandTraceId": "trace-from-server",
+                    "connectedStatus": True,
+                }
+            }
+        )
+        self.assertEqual(trace_id, "trace-from-server")
+        self.assertTrue(connected)
+        message, code = service_error(
+            {
+                "results": None,
+                "errorData": {
+                    "errorList": [{"errorCode": "503", "errorMsg": "unavailable"}]
+                },
+            }
+        )
+        self.assertEqual(message, "unavailable")
+        self.assertEqual(code, "503")
 
 
 if __name__ == "__main__":

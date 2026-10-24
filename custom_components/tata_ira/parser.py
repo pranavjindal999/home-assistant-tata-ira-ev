@@ -95,6 +95,34 @@ def lock_command_body(locked: bool, trace_id: str) -> tuple[str, dict[str, Any]]
     return command, {"config": None, "commandTraceId": trace_id}
 
 
+def command_log_body(vehicle_id: str, command: str, origin: str) -> dict[str, str]:
+    """Ask iRA.ev for the command id the car command must use.
+
+    The app sends this before lock, unlock, and air conditioning. The metadata
+    value is the literal string the app builds, including the unquoted name.
+    """
+    return {
+        "vehicleId": vehicle_id,
+        "commandName": command,
+        "originDateTime": origin,
+        "metadata": "{" + command + ":true}",
+    }
+
+
+def parse_command_log(payload: dict[str, Any]) -> tuple[str | None, bool | None]:
+    """Read the command id and whether the car is connected."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None, None
+    trace_id = results.get("commandTraceId")
+    if not isinstance(trace_id, str) or not trace_id:
+        trace_id = None
+    connected = results.get("connectedStatus")
+    if not isinstance(connected, bool):
+        connected = None
+    return trace_id, connected
+
+
 def service_error(payload: dict[str, Any]) -> tuple[str | None, str | None]:
     """Return the service error message and code, when the body contains one."""
     error = payload.get("errorData")
