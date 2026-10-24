@@ -69,7 +69,8 @@ def ac_command_body(on: bool, minutes: int, trace_id: str) -> tuple[str, dict[st
     """Build the vehicle-command name and body the iRA.ev app sends.
 
     The app stores the chosen minutes as seconds and sends that number in settimer.
-    Turning the air conditioner off sends an empty config.
+    Turning the air conditioner off sends an empty config object. A null config
+    is rejected by the command service.
     """
     if on:
         if minutes < AC_MINUTES_MIN or minutes > AC_MINUTES_MAX:
@@ -85,14 +86,14 @@ def ac_command_body(on: bool, minutes: int, trace_id: str) -> tuple[str, dict[st
         )
     return (
         "StopAcCommand",
-        {"config": None, "commandTraceId": trace_id},
+        {"config": {}, "commandTraceId": trace_id},
     )
 
 
 def lock_command_body(locked: bool, trace_id: str) -> tuple[str, dict[str, Any]]:
     """Build the lock or unlock command the iRA.ev app sends."""
     command = "LockVehicleCommand" if locked else "UnlockVehicleCommand"
-    return command, {"config": None, "commandTraceId": trace_id}
+    return command, {"config": {}, "commandTraceId": trace_id}
 
 
 def command_log_body(vehicle_id: str, command: str, origin: str) -> dict[str, str]:
@@ -145,7 +146,7 @@ def command_progress(status: str | None) -> str:
     if not status:
         return "done"
     normalized = status.strip().lower()
-    if normalized in {"in progress", "inprogress", "pending", "queued"}:
+    if normalized in {"accepted", "in progress", "inprogress", "pending", "queued"}:
         return "wait"
     if normalized in {"failure", "failed", "timed out", "timeout", "rejected"}:
         return "failed"

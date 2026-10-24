@@ -104,7 +104,7 @@ class AirConditioningTests(unittest.TestCase):
     def test_stop_clears_the_timer(self) -> None:
         command, body = ac_command_body(False, 10, "trace-3")
         self.assertEqual(command, "StopAcCommand")
-        self.assertIsNone(body["config"])
+        self.assertEqual(body["config"], {})
         self.assertEqual(body["commandTraceId"], "trace-3")
 
     def test_refresh_accepts_top_level_and_nested_tokens(self) -> None:
@@ -171,7 +171,7 @@ class AirConditioningTests(unittest.TestCase):
     def test_lock_and_unlock_commands(self) -> None:
         command, body = lock_command_body(True, "trace-lock")
         self.assertEqual(command, "LockVehicleCommand")
-        self.assertIsNone(body["config"])
+        self.assertEqual(body["config"], {})
         command, body = lock_command_body(False, "trace-unlock")
         self.assertEqual(command, "UnlockVehicleCommand")
         self.assertEqual(body["commandTraceId"], "trace-unlock")
@@ -206,6 +206,7 @@ class AirConditioningTests(unittest.TestCase):
         )
         self.assertEqual(status, "In Progress")
         self.assertEqual(correlation, "42")
+        self.assertEqual(command_progress("accepted"), "wait")
         self.assertEqual(command_progress("in progress"), "wait")
         self.assertEqual(command_progress("success"), "done")
         self.assertEqual(command_progress("failure"), "failed")
