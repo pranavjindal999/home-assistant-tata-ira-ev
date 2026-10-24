@@ -43,6 +43,64 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, ac_on=on))
 
+    async def async_set_approach_lights(self, on: bool) -> None:
+        """Turn the approach lights on or off."""
+        await self._async_set_switch(
+            on,
+            "RemoteApproachOnCommand",
+            "RemoteApproachOffCommand",
+            "approach_lights",
+        )
+
+    async def async_set_headlights(self, on: bool) -> None:
+        """Turn the headlights on or off."""
+        await self._async_set_switch(
+            on,
+            "RemotePositionCommandLampOn",
+            "RemotePositionCommandLampOff",
+            "headlights",
+        )
+
+    async def async_set_hazard_lights(self, on: bool) -> None:
+        """Turn the hazard lights on or off."""
+        await self._async_set_switch(
+            on,
+            "RemoteHazardCommandLampOn",
+            "RemoteHazardCommandLampOff",
+            "hazard_lights",
+        )
+
+    async def async_set_engine(self, on: bool) -> None:
+        """Start the car for the saved duration, or stop it."""
+        try:
+            rotated = await self.client.async_set_engine(on, self.ac_minutes)
+        except (IraAuthError, IraConnectionError, IraError) as err:
+            raise UpdateFailed(str(err) or err.__class__.__name__) from err
+        self._store_refresh_token(rotated)
+        if self.data is not None:
+            self.async_set_updated_data(replace(self.data, engine_on=on))
+
+    async def async_honk(self) -> None:
+        """Sound the horn."""
+        try:
+            rotated = await self.client.async_honk()
+        except (IraAuthError, IraConnectionError, IraError) as err:
+            raise UpdateFailed(str(err) or err.__class__.__name__) from err
+        self._store_refresh_token(rotated)
+
+    async def _async_set_switch(
+        self, on: bool, on_command: str, off_command: str, field: str
+    ) -> None:
+        try:
+            rotated = await self.client.async_set_switch(
+                on, on_command, off_command, field
+            )
+        except (IraAuthError, IraConnectionError, IraError) as err:
+            raise UpdateFailed(str(err) or err.__class__.__name__) from err
+        self._store_refresh_token(rotated)
+        if self.data is not None:
+            self.async_set_updated_data(replace(self.data, **{field: on}))
+
     async def async_set_locked(self, locked: bool) -> None:
         """Lock or unlock the car."""
         try:

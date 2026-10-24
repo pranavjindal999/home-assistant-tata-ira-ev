@@ -18,6 +18,10 @@ class VehicleStatus:
     charge_minutes_remaining: int | None
     ac_on: bool | None = None
     locked: bool | None = None
+    approach_lights: bool | None = None
+    headlights: bool | None = None
+    hazard_lights: bool | None = None
+    engine_on: bool | None = None
 
 
 def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
@@ -37,7 +41,17 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
         charging=None if charging is None else bool(charging),
         charge_minutes_remaining=remaining,
         locked=None if lock_state is None else not bool(lock_state),
+        approach_lights=_optional_bool(results, "approchLampOnFlag"),
+        headlights=_optional_bool(results, "positionLampOnFlag"),
+        hazard_lights=_optional_bool(results, "hazardLampOnFlag"),
+        engine_on=_optional_bool(results, "crankOn"),
     )
+
+
+def _optional_bool(results: dict[str, Any], key: str) -> bool | None:
+    if key not in results or results[key] is None:
+        return None
+    return bool(results[key])
 
 
 def parse_air_conditioning(payload: dict[str, Any]) -> bool | None:
@@ -88,6 +102,23 @@ def ac_command_body(on: bool, minutes: int, trace_id: str) -> tuple[str, dict[st
         "StopAcCommand",
         {"config": {}, "commandTraceId": trace_id},
     )
+
+
+def empty_command_body(trace_id: str) -> dict[str, Any]:
+    """Body for a command that does not set a timer."""
+    return {"config": {}, "commandTraceId": trace_id}
+
+
+def timed_command_body(minutes: int, trace_id: str) -> dict[str, Any]:
+    """Body for a command that runs for a number of minutes."""
+    if minutes < AC_MINUTES_MIN or minutes > AC_MINUTES_MAX:
+        raise ValueError(
+            f"Duration must be {AC_MINUTES_MIN} to {AC_MINUTES_MAX} minutes"
+        )
+    return {
+        "config": {"settimer": str(int(minutes) * 60)},
+        "commandTraceId": trace_id,
+    }
 
 
 def lock_command_body(locked: bool, trace_id: str) -> tuple[str, dict[str, Any]]:

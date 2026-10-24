@@ -26,6 +26,8 @@ parse_vehicle_ids = _MODULE.parse_vehicle_ids
 otp_verify_body = _MODULE.otp_verify_body
 ac_command_body = _MODULE.ac_command_body
 lock_command_body = _MODULE.lock_command_body
+empty_command_body = _MODULE.empty_command_body
+timed_command_body = _MODULE.timed_command_body
 command_log_body = _MODULE.command_log_body
 parse_command_log = _MODULE.parse_command_log
 parse_command_status = _MODULE.parse_command_status
@@ -78,6 +80,24 @@ class ParseVehicleHealthTests(unittest.TestCase):
         unlocked = parse_vehicle_health({"results": {"vehicleLockState": True}})
         self.assertTrue(locked.locked)
         self.assertFalse(unlocked.locked)
+
+    def test_light_and_engine_flags(self) -> None:
+        status = parse_vehicle_health(
+            {
+                "results": {
+                    "approchLampOnFlag": True,
+                    "positionLampOnFlag": False,
+                    "hazardLampOnFlag": True,
+                    "crankOn": False,
+                }
+            }
+        )
+        self.assertTrue(status.approach_lights)
+        self.assertFalse(status.headlights)
+        self.assertTrue(status.hazard_lights)
+        self.assertFalse(status.engine_on)
+        self.assertEqual(empty_command_body("trace")["config"], {})
+        self.assertEqual(timed_command_body(10, "trace")["config"]["settimer"], "600")
 
 
 class AirConditioningTests(unittest.TestCase):

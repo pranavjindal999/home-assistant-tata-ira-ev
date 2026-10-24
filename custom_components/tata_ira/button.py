@@ -21,7 +21,12 @@ async def async_setup_entry(
 ) -> None:
     """Add the refresh button."""
     coordinator: IraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([RefreshButton(coordinator, entry)])
+    async_add_entities(
+        [
+            RefreshButton(coordinator, entry),
+            HornButton(coordinator, entry),
+        ]
+    )
 
 
 class RefreshButton(ButtonEntity):
@@ -42,5 +47,27 @@ class RefreshButton(ButtonEntity):
         """Read the car immediately, without waiting for the next poll."""
         try:
             await self.coordinator.async_refresh()
+        except UpdateFailed as err:
+            raise HomeAssistantError(str(err)) from err
+
+
+class HornButton(ButtonEntity):
+    """Sound the horn."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Horn"
+    _attr_icon = "mdi:bullhorn"
+
+    def __init__(self, coordinator: IraCoordinator, entry: ConfigEntry) -> None:
+        """Identify the horn button."""
+        self.coordinator = coordinator
+        vehicle_id = entry.data[CONF_VEHICLE_ID]
+        self._attr_unique_id = f"{vehicle_id}_horn"
+        self._attr_device_info = vehicle_device_info(entry)
+
+    async def async_press(self) -> None:
+        """Send the horn command."""
+        try:
+            await self.coordinator.async_honk()
         except UpdateFailed as err:
             raise HomeAssistantError(str(err)) from err

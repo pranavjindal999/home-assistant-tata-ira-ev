@@ -35,6 +35,8 @@ from .parser import (
     VehicleStatus,
     ac_command_body,
     command_log_body,
+    empty_command_body,
+    timed_command_body,
     command_progress,
     lock_command_body,
     parse_command_log,
@@ -116,6 +118,53 @@ class IraClient:
             command,
             lambda trace_id: ac_command_body(on, minutes, trace_id)[1],
             lambda: self._async_air_matches(on),
+        )
+
+    async def async_set_switch(
+        self,
+        on: bool,
+        on_command: str,
+        off_command: str,
+        field: str,
+    ) -> str | None:
+        """Turn one reported car feature on or off."""
+
+        async def matches() -> tuple[bool, str | None]:
+            return await self._async_health_flag(field, on)
+
+        current, rotated = await matches()
+        if current:
+            return rotated
+        command = on_command if on else off_command
+        return await self._async_vehicle_command(
+            command, empty_command_body, matches
+        )
+
+    async def async_set_engine(self, on: bool, minutes: int) -> str | None:
+        """Start the car for a number of minutes, or stop it."""
+
+        async def matches() -> tuple[bool, str | None]:
+            return await self._async_health_flag("engine_on", on)
+
+        current, rotated = await matches()
+        if current:
+            return rotated
+        if on:
+            return await self._async_vehicle_command(
+                "RemoteEngineStartCommand",
+                lambda trace_id: timed_command_body(minutes, trace_id),
+                matches,
+            )
+        return await self._async_vehicle_command(
+            "RemoteEngineStopCommand", empty_command_body, matches
+        )
+
+    async def async_honk(self) -> str | None:
+        """Sound the horn once."""
+        return await self._async_vehicle_command(
+            "RemoteHonkCommand",
+            empty_command_body,
+            self._async_not_already,
         )
 
     async def async_set_locked(self, locked: bool) -> str | None:
@@ -271,6 +320,19 @@ class IraClient:
             return await self._async_air_conditioning(access_token) is on, rotated
         except IraError:
             return False, None
+
+    async def _async_health_flag(
+        self, field: str, expected: bool
+    ) -> tuple[bool, str | None]:
+        try:
+            access_token, rotated = await self._async_refresh()
+            status = await self._async_health(access_token)
+        except IraError:
+            return False, None
+        return getattr(status, field) is expected, rotated
+
+    async def _async_not_already(self) -> tuple[bool, str | None]:
+        return False, None
 
     async def _async_lock_matches(self, locked: bool) -> tuple[bool, str | None]:
         try:
