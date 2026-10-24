@@ -3,10 +3,10 @@
   "name": "Tata iRA.ev",
   "codeowners": ["@pranavjindal999"],
   "config_flow": true,
-  "documentation": "https://github.com/pranavjindal999/tata-ira-ev",
+  "documentation": "https://github.com/pranavjindal999/home-assistant-tata-ira-ev",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/pranavjindal999/tata-ira-ev/issues",
+  "issue_tracker": "https://github.com/pranavjindal999/home-assistant-tata-ira-ev/issues",
   "requirements": [],
-  "version": "0.4.8"
+  "version": "0.4.9"
 }

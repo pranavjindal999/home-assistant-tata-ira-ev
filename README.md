@@ -1,46 +1,128 @@
 # Tata iRA.ev
 
-Home Assistant sensors and controls for a Tata EV that uses the iRA.ev app:
+Home Assistant custom integration for a Tata Motors electric vehicle that uses the [iRA.ev](https://www.tatamotors.com/) app. It reads the car every 30 seconds and sends the same remote commands the app sends: air conditioning, lights, horn, and lock.
 
-- Battery percentage
-- Charging on or off
-- Minutes remaining while the car is charging
-- Cabin air conditioning: turn it on for 0 to 30 minutes, or turn it off
-- Approach lights, headlights, and hazard lights
-- Horn
-- Lock or unlock the car, and whether it is locked
+This project is unofficial and is not part of Tata Motors.
 
-Readings refresh every 30 seconds. Press Refresh to update immediately. Home Assistant opens the car's command link as soon as it starts and keeps that link awake. A rate limit or a short outage does not clear Connected, and a failed check is tried again within a few seconds. This is unofficial and is not part of Tata Motors.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pranavjindal999&repository=home-assistant-tata-ira-ev&category=integration)
+[![GitHub release](https://img.shields.io/github/v/release/pranavjindal999/home-assistant-tata-ira-ev)](https://github.com/pranavjindal999/home-assistant-tata-ira-ev/releases)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pranavjindal999&repository=tata-ira-ev&category=integration)
+Requires Home Assistant 2024.8.0 or newer.
+
+## Features
+
+### Battery and charging
+
+- **Battery** is the high-voltage battery percentage.
+- **Charging** is on while the car is charging.
+- **Charge time remaining** is the minutes left until full. It only has a value while the car is charging.
+
+Home Assistant reads these every 30 seconds. **Refresh** reads them immediately.
+
+### Air conditioning
+
+The air conditioner uses the same fixed cabin temperature as the iRA.ev app, 25°.
+
+**Air conditioning duration** is how long the next start runs, from 0 to 30 minutes. The default is 10. Home Assistant stores this number. It is sent only when you turn the air conditioner on.
+
+**Air conditioning** turns the cabin air conditioner on or off:
+
+- If it is off, turning the switch on starts it for the saved duration.
+- If it is on, turning the switch off stops it.
+
+### Lights
+
+Each light switch shows the state the car reports, and sends the matching command from the app’s lights screen.
+
+- **Approach lights** are the approach lamps.
+- **Headlights** are the position lamps on that screen. This is the headlight control in the app, separate from the high-beam and low-beam telltales.
+- **Hazard lights** are the hazard lamps.
+
+### Horn
+
+**Horn** sounds the horn once. It is a button, so it has no on or off state.
+
+### Lock
+
+**Lock** shows whether the car is locked, and locks or unlocks it.
+
+### Command link
+
+**Connected** is on while the car’s command link is awake. Home Assistant opens that link when it starts and checks it every couple of minutes, so a command hours later does not have to wake the car first.
+
+A rate limit or a short outage does not turn Connected off. Home Assistant retries those requests. Connected turns off when the car itself reports that the link is down, and Home Assistant tries again within a few seconds.
+
+### While a command runs
+
+A switch, the lock, or the horn stays on its current state and shows loading until iRA.ev reports that the command has finished. Accepted or queued is not finished. The control changes after the server reports success.
 
 ## Install
 
-1. Click the button above. Home Assistant opens the repository in Marketplace, or in HACS on older versions. Install it.
+### HACS
+
+1. Click the button at the top. Home Assistant opens this repository in Marketplace, or in HACS on older versions. Install **Tata iRA.ev**.
 2. Restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration**, and choose **Tata iRA.ev**.
+3. Go to **Settings → Devices & services → Add integration** and choose **Tata iRA.ev**.
+
+To update later, update Tata iRA.ev in HACS and restart Home Assistant.
+
+### Manual
+
+1. Copy `custom_components/tata_ira` into `config/custom_components/tata_ira`.
+2. Restart Home Assistant.
+3. Add the **Tata iRA.ev** integration as above.
 
 ## Setup
 
-The form asks for the mobile number on the iRA.ev account, then the code sent by text. The car and session are picked up from that sign-in. If the account has more than one car, choose which one to add.
+The form asks for the country code and the mobile number on the iRA.ev account. iRA.ev texts a code. Enter that code. The car and the session are taken from that sign-in. If the account has more than one car, choose which one to add.
 
-If iRA.ev later rejects the saved session, Home Assistant asks for the mobile number and a new code.
+The mobile number and the code are not stored. Home Assistant keeps the session for that car. If iRA.ev later rejects the session, Home Assistant asks for the mobile number and a new code.
+
+Each car can be added once.
 
 ## Entities
 
-| Entity | Meaning |
+Default entity IDs use the device name Tata iRA.ev. If you rename the device, Home Assistant changes the IDs.
+
+| Entity | What it does |
 | --- | --- |
 | `sensor.tata_ira_ev_battery` | Battery percentage |
 | `binary_sensor.tata_ira_ev_charging` | On while the car is charging |
-| `binary_sensor.tata_ira_ev_connected` | On while the command link is awake |
-| `sensor.tata_ira_ev_charge_time_remaining` | Minutes left, only while charging |
-| `switch.tata_ira_ev_air_conditioning` | On starts the air conditioner. Off stops it |
-| `number.tata_ira_ev_air_conditioning_duration` | How long the next air-conditioning start runs, from 0 to 30 minutes |
+| `sensor.tata_ira_ev_charge_time_remaining` | Minutes left until full, only while charging |
+| `switch.tata_ira_ev_air_conditioning` | Starts the air conditioner for the saved duration, or stops it |
+| `number.tata_ira_ev_air_conditioning_duration` | Next air-conditioning run, 0 to 30 minutes, default 10 |
 | `switch.tata_ira_ev_approach_lights` | Approach lights |
-| `switch.tata_ira_ev_headlights` | Headlights |
+| `switch.tata_ira_ev_headlights` | Headlights (position lamps) |
 | `switch.tata_ira_ev_hazard_lights` | Hazard lights |
-| `button.tata_ira_ev_horn` | Sound the horn |
-| `button.tata_ira_ev_refresh` | Read the car now |
+| `button.tata_ira_ev_horn` | Sound the horn once |
 | `lock.tata_ira_ev_lock` | Locked or unlocked. Lock and unlock the car |
+| `binary_sensor.tata_ira_ev_connected` | On while the command link is awake |
+| `button.tata_ira_ev_refresh` | Read the car now |
 
-Set the duration, then turn the switch on. The car runs the air conditioner for that many minutes at 25°. Turning the switch off stops it. A switch, the lock, or the horn stays loading on its current state until iRA.ev reports that the command has finished.
+## Example
+
+Cool the cabin for 10 minutes:
+
+```yaml
+actions:
+  - action: number.set_value
+    target:
+      entity_id: number.tata_ira_ev_air_conditioning_duration
+    data:
+      value: 10
+  - action: switch.turn_on
+    target:
+      entity_id: switch.tata_ira_ev_air_conditioning
+```
+
+The switch stays loading until iRA.ev reports that the air conditioner has started.
+
+## Limits
+
+Readings are polled from iRA.ev every 30 seconds. This integration does not subscribe to the app’s live push channel.
+
+The app also lists beep and flash. This integration does not include that command, because the car’s connection does not provide one.
+
+## Disclaimer
+
+Tata, iRA.ev, and the car names are trademarks of their owners. This integration is an independent Home Assistant component.
