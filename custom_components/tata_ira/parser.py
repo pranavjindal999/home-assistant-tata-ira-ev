@@ -109,6 +109,49 @@ def command_log_body(vehicle_id: str, command: str, origin: str) -> dict[str, st
     }
 
 
+def parse_device_awake(payload: dict[str, Any]) -> bool | None:
+    """Read whether the car's command unit is awake."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None
+    awake = results.get("deviceState")
+    if not isinstance(awake, bool):
+        return None
+    return awake
+
+
+def parse_command_status(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Read a command's status and the id used to poll it."""
+    results = payload.get("results")
+    if isinstance(results, dict) and "status" not in results:
+        nested = results.get("results")
+        if isinstance(nested, dict):
+            results = nested
+    if not isinstance(results, dict):
+        return None, None
+    status = results.get("status")
+    if not isinstance(status, str) or not status:
+        status = None
+    correlation = results.get("correlationId")
+    if isinstance(correlation, int):
+        correlation = str(correlation)
+    elif not isinstance(correlation, str) or not correlation:
+        correlation = None
+    return status, correlation
+
+
+def command_progress(status: str | None) -> str:
+    """Classify a command status as done, wait, or failed."""
+    if not status:
+        return "done"
+    normalized = status.strip().lower()
+    if normalized in {"in progress", "inprogress", "pending", "queued"}:
+        return "wait"
+    if normalized in {"failure", "failed", "timed out", "timeout", "rejected"}:
+        return "failed"
+    return "done"
+
+
 def parse_command_log(payload: dict[str, Any]) -> tuple[str | None, bool | None]:
     """Read the command id and whether the car is connected."""
     results = payload.get("results")

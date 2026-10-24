@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import replace
@@ -21,6 +22,9 @@ from .const import (
     CLIENT_SECRET,
     COMMAND_LOG_PATH,
     COMMAND_PATH,
+    COMMAND_STATUS_PATH,
+    DEVICE_STATUS_PATH,
+    WAKE_PATH,
     HEALTH_PATH,
     PROFILE_PATH,
     REFRESH_PATH,
@@ -31,8 +35,11 @@ from .parser import (
     VehicleStatus,
     ac_command_body,
     command_log_body,
+    command_progress,
     lock_command_body,
     parse_command_log,
+    parse_command_status,
+    parse_device_awake,
     otp_verify_body,
     parse_air_conditioning,
     parse_auth_code,
@@ -101,26 +108,69 @@ class IraClient:
         self, on: bool, minutes: int
     ) -> str | None:
         """Start the air conditioner for a number of minutes, or stop it."""
+        matches, rotated = await self._async_air_matches(on)
+        if matches:
+            return rotated
         command, _body = ac_command_body(on, minutes, "")
         return await self._async_vehicle_command(
-            command, lambda trace_id: ac_command_body(on, minutes, trace_id)[1]
+            command,
+            lambda trace_id: ac_command_body(on, minutes, trace_id)[1],
+            lambda: self._async_air_matches(on),
         )
 
     async def async_set_locked(self, locked: bool) -> str | None:
         """Lock or unlock the car."""
+        matches, rotated = await self._async_lock_matches(locked)
+        if matches:
+            return rotated
         command, _body = lock_command_body(locked, "")
         return await self._async_vehicle_command(
-            command, lambda trace_id: lock_command_body(locked, trace_id)[1]
+            command,
+            lambda trace_id: lock_command_body(locked, trace_id)[1],
+            lambda: self._async_lock_matches(locked),
         )
 
     async def _async_vehicle_command(
-        self, command: str, body_for: Callable[[str], dict[str, Any]]
+        self,
+        command: str,
+        body_for: Callable[[str], dict[str, Any]],
+        already: Callable[[], Any],
     ) -> str | None:
-        """Log the command, then send it with the id the service returns.
+        """Log the command, wake the car when it is asleep, then send it.
 
         The fingerprint prompt in the app is local and is not part of this request.
-        A response that includes errorData is a failure even when HTTP status is 200.
+        A temporary rejection is retried. If the car already has the requested
+        state, that state is kept instead of reporting the rejection.
         """
+        last_error: IraError | None = None
+        rotated: str | None = None
+        for attempt in range(3):
+            try:
+                rotated_now = await self._async_send_command(command, body_for)
+            except (IraAuthError, IraConnectionError):
+                raise
+            except IraError as err:
+                last_error = err
+                if not _temporary_command_error(err) or attempt == 2:
+                    break
+                await asyncio.sleep(4)
+                continue
+            if rotated_now:
+                rotated = rotated_now
+            return rotated
+        if last_error is not None and _temporary_command_error(last_error):
+            matches, rotated_now = await already()
+            if rotated_now:
+                rotated = rotated_now
+            if matches:
+                return rotated
+        if last_error is not None:
+            raise last_error
+        return rotated
+
+    async def _async_send_command(
+        self, command: str, body_for: Callable[[str], dict[str, Any]]
+    ) -> str | None:
         access_token, rotated = await self._async_refresh()
         headers = {
             **self._vehicle_headers(access_token),
@@ -140,10 +190,10 @@ class IraClient:
         )
         self._raise_service_error(logged)
         trace_id, connected = parse_command_log(logged)
-        if connected is False:
-            raise IraError("The car is not connected")
         if not trace_id:
             raise IraError("iRA.ev did not return a command id")
+        if connected is False:
+            await self._async_wake(access_token, trace_id)
         result = await self._async_request(
             "POST",
             COMMAND_PATH,
@@ -155,7 +205,79 @@ class IraClient:
             },
         )
         self._raise_service_error(result)
+        await self._async_wait_for_command(access_token, result)
         return rotated
+
+    async def _async_wake(self, access_token: str, trace_id: str) -> None:
+        """Wake the command unit, then wait until it reports it is awake."""
+        headers = {
+            **self._vehicle_headers(access_token),
+            "Accept": "application/json",
+            "Cache-Control": "no-cache, no-store",
+            "commandTraceId": trace_id,
+            "X-Request-ID": str(uuid4()),
+        }
+        try:
+            await self._async_request("GET", WAKE_PATH, headers=headers)
+        except IraError:
+            _LOGGER.debug("Wake request was not accepted")
+        for _ in range(4):
+            await asyncio.sleep(2)
+            try:
+                status = await self._async_request(
+                    "GET",
+                    DEVICE_STATUS_PATH,
+                    headers={**headers, "X-Request-ID": str(uuid4())},
+                )
+            except IraError:
+                continue
+            if parse_device_awake(status) is True:
+                return
+        raise IraError("The car is not connected")
+
+    async def _async_wait_for_command(
+        self, access_token: str, result: dict[str, Any]
+    ) -> None:
+        status, correlation = parse_command_status(result)
+        if command_progress(status) == "failed":
+            raise IraError("The car did not accept the command")
+        if command_progress(status) != "wait" or not correlation:
+            return
+        headers = {
+            **self._vehicle_headers(access_token),
+            "Accept": "application/json",
+            "Cache-Control": "no-cache, no-store",
+            "correlationId": correlation,
+        }
+        for _ in range(6):
+            await asyncio.sleep(3)
+            polled = await self._async_request(
+                "GET",
+                COMMAND_STATUS_PATH,
+                headers={**headers, "X-Request-ID": str(uuid4())},
+            )
+            self._raise_service_error(polled)
+            polled_status, _correlation = parse_command_status(polled)
+            progress = command_progress(polled_status)
+            if progress == "failed":
+                raise IraError("The car did not accept the command")
+            if progress == "done":
+                return
+        raise IraError("The car is still applying that command")
+
+    async def _async_air_matches(self, on: bool) -> tuple[bool, str | None]:
+        try:
+            access_token, rotated = await self._async_refresh()
+            return await self._async_air_conditioning(access_token) is on, rotated
+        except IraError:
+            return False, None
+
+    async def _async_lock_matches(self, locked: bool) -> tuple[bool, str | None]:
+        try:
+            access_token, rotated = await self._async_refresh()
+            return (await self._async_health(access_token)).locked is locked, rotated
+        except IraError:
+            return False, None
 
     def _raise_service_error(self, payload: dict[str, Any]) -> None:
         message, _code = service_error(payload)
@@ -235,6 +357,11 @@ class IraClient:
         if not isinstance(payload, dict):
             raise IraError("iRA.ev returned an unexpected response")
         return payload
+
+
+def _temporary_command_error(err: IraError) -> bool:
+    text = str(err).lower()
+    return "not connected" in text or "temporarily unavailable" in text
 
 
 def _login_headers(access_token: str | None = None) -> dict[str, str]:

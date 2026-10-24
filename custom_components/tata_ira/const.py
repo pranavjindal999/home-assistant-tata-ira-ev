@@ -25,6 +25,9 @@ HEALTH_PATH = "/mobile/cvp/api/v1/ev/vehicle-health"
 STATE_PATH = "/mobile/cvp/api/v1/ev/vehicle-state"
 COMMAND_LOG_PATH = "/mobile/cvp/api/v1/ev/command-log"
 COMMAND_PATH = "/mobile/cvp/api/v1/ev/vehicle-command"
+COMMAND_STATUS_PATH = "/mobile/cvp/api/v1/ev/vehicle-command-status"
+WAKE_PATH = "/mobile/cvp/api/v1/ev/wake-up-device"
+DEVICE_STATUS_PATH = "/mobile/cvp/api/v1/ev/check-device-status"
 
 # Same client identity the official Android app sends. The installed app is 26.9.1.
 CLIENT_ID = "TMLEV-ANDROID-APP"

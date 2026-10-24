@@ -28,6 +28,9 @@ ac_command_body = _MODULE.ac_command_body
 lock_command_body = _MODULE.lock_command_body
 command_log_body = _MODULE.command_log_body
 parse_command_log = _MODULE.parse_command_log
+parse_command_status = _MODULE.parse_command_status
+parse_device_awake = _MODULE.parse_device_awake
+command_progress = _MODULE.command_progress
 service_error = _MODULE.service_error
 
 
@@ -197,6 +200,15 @@ class AirConditioningTests(unittest.TestCase):
         )
         self.assertEqual(message, "unavailable")
         self.assertEqual(code, "503")
+        self.assertTrue(parse_device_awake({"results": {"deviceState": True}}))
+        status, correlation = parse_command_status(
+            {"results": {"status": "In Progress", "correlationId": 42}}
+        )
+        self.assertEqual(status, "In Progress")
+        self.assertEqual(correlation, "42")
+        self.assertEqual(command_progress("in progress"), "wait")
+        self.assertEqual(command_progress("success"), "done")
+        self.assertEqual(command_progress("failure"), "failed")
 
 
 if __name__ == "__main__":
