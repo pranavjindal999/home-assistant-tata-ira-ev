@@ -64,6 +64,10 @@ class VehicleStatus:
     speed_kmh: float | None = None
     latitude: float | None = None
     longitude: float | None = None
+    ignition_on: bool | None = None
+    key_in_car: bool | None = None
+    high_beam: bool | None = None
+    low_beam: bool | None = None
 
 
 def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
@@ -108,6 +112,9 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
         rear_right_door=_optional_bool(results, "rightRearDoorOpenFlag"),
         bonnet=_optional_bool(results, "bonnetOpenFlag"),
         tailgate=_optional_bool(results, "tailGateOpenFlag"),
+        key_in_car=_optional_bool(results, "pepsKeyInVehicleFlag"),
+        high_beam=_optional_bool(results, "highBeamLampOnFlag"),
+        low_beam=_optional_bool(results, "lowBeamLampOnFlag"),
     )
 
 
@@ -212,6 +219,9 @@ def parse_vehicle_details(payload: dict[str, Any]) -> dict[str, Any]:
     speed = _optional_number(results, "speed")
     if speed is not None:
         details["speed_kmh"] = speed
+    ignition = _optional_bool(results, "ignitionOn")
+    if ignition is not None:
+        details["ignition_on"] = ignition
     latitude = _optional_number(results, "gpsLatitude")
     longitude = _optional_number(results, "gpsLongitude")
     if latitude not in (None, 0) and longitude not in (None, 0):

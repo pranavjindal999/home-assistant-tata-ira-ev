@@ -47,6 +47,9 @@ These come from the same status the app already downloads. Several of them are n
 - **Warning** is on when the car reports a fault lamp, such as the check-engine, ABS, airbag, high battery temperature, motor, or transmission warning.
 - **Front left door**, **Front right door**, **Rear left door**, **Rear right door**, **Bonnet**, and **Tailgate** are on while that opening is open.
 - **Location** is where the car last reported it is.
+- **Ignition** is on while the car is switched on.
+- **Key in car** is on when the key is inside the car.
+- **High beam** and **Low beam** are the beam telltales. They are separate from the **Headlights** switch, which controls the position lamps.
 
 ### Air conditioning
 
@@ -143,6 +146,10 @@ Default entity IDs use the device name Tata iRA.ev. If you rename the device, Ho
 | `binary_sensor.tata_ira_ev_bonnet` | On while the bonnet is open |
 | `binary_sensor.tata_ira_ev_tailgate` | On while the tailgate is open |
 | `device_tracker.tata_ira_ev_location` | Last reported location |
+| `binary_sensor.tata_ira_ev_ignition` | On while the car is switched on |
+| `binary_sensor.tata_ira_ev_key_in_car` | On when the key is inside the car |
+| `binary_sensor.tata_ira_ev_high_beam` | On while the high beam is on |
+| `binary_sensor.tata_ira_ev_low_beam` | On while the low beam is on |
 | `switch.tata_ira_ev_air_conditioning` | Starts the air conditioner for the saved duration, or stops it |
 | `number.tata_ira_ev_air_conditioning_duration` | Next air-conditioning run, 0 to 30 minutes, default 10 |
 | `switch.tata_ira_ev_approach_lights` | Approach lights |

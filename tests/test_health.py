@@ -159,6 +159,7 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertTrue(status.front_left_door)
         self.assertFalse(status.bonnet)
         self.assertIsNone(status.rear_left_door)
+        self.assertIsNone(status.key_in_car)
 
     def test_zero_energy_and_a_warning_lamp(self) -> None:
         status = parse_vehicle_health(
@@ -175,6 +176,7 @@ class ParseVehicleHealthTests(unittest.TestCase):
                     "odometerInMeters": "23144317",
                     "vehicleInteriorTemperature": 29.0,
                     "speed": 0,
+                    "ignitionOn": False,
                     "gpsLatitude": 0,
                     "gpsLongitude": 0,
                 }
@@ -184,7 +186,22 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertEqual(details["odometer_km"], 23144.3)
         self.assertEqual(details["interior_temperature"], 29.0)
         self.assertEqual(details["speed_kmh"], 0)
+        self.assertFalse(details["ignition_on"])
         self.assertNotIn("latitude", details)
+
+    def test_key_and_beams(self) -> None:
+        status = parse_vehicle_health(
+            {
+                "results": {
+                    "pepsKeyInVehicleFlag": True,
+                    "highBeamLampOnFlag": False,
+                    "lowBeamLampOnFlag": True,
+                }
+            }
+        )
+        self.assertTrue(status.key_in_car)
+        self.assertFalse(status.high_beam)
+        self.assertTrue(status.low_beam)
 
 
 class AirConditioningTests(unittest.TestCase):
