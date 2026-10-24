@@ -43,7 +43,7 @@ from .parser import (
     parse_command_status,
     parse_device_awake,
     otp_verify_body,
-    parse_air_conditioning,
+    parse_vehicle_details,
     parse_auth_code,
     parse_code_verifier,
     parse_login_tokens,
@@ -149,11 +149,11 @@ class IraClient:
         access_token, rotated = await self._async_refresh()
         status = await self._async_health(access_token)
         try:
-            ac_on = await self._async_air_conditioning(access_token)
+            details = await self._async_vehicle_details(access_token)
         except IraError as err:
-            _LOGGER.debug("Air conditioning state was not available: %s", err)
+            _LOGGER.debug("Vehicle details were not available: %s", err)
         else:
-            status = replace(status, ac_on=ac_on)
+            status = replace(status, **details)
         return status, rotated
 
     async def async_set_air_conditioning(
@@ -454,13 +454,16 @@ class IraClient:
         )
         return parse_vehicle_health(payload)
 
-    async def _async_air_conditioning(self, access_token: str) -> bool | None:
+    async def _async_vehicle_details(self, access_token: str) -> dict[str, Any]:
         payload = await self._async_request(
             "GET",
             STATE_PATH,
             headers=self._vehicle_headers(access_token),
         )
-        return parse_air_conditioning(payload)
+        return parse_vehicle_details(payload)
+
+    async def _async_air_conditioning(self, access_token: str) -> bool | None:
+        return (await self._async_vehicle_details(access_token)).get("ac_on")
 
     def _vehicle_headers(self, access_token: str) -> dict[str, str]:
         return {

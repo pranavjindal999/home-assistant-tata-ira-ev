@@ -8,7 +8,15 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfPressure, UnitOfTime
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfElectricPotential,
+    UnitOfLength,
+    UnitOfPressure,
+    UnitOfSpeed,
+    UnitOfTemperature,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -56,6 +64,10 @@ async def async_setup_entry(
                 key="back_right_tyre",
                 name="Back right tyre",
                 unique_id_suffix="back_right_tyre",
+            ),
+            *(
+                ReadingSensor(coordinator, entry, **spec)
+                for spec in _READINGS
             ),
         ]
     )
@@ -117,6 +129,137 @@ class ChargeTimeSensor(IraSensor):
             super().available
             and self.coordinator.data.charge_minutes_remaining is not None
         )
+
+
+_READINGS = (
+    {
+        "key": "range_km",
+        "name": "Range",
+        "unique_id_suffix": "range",
+        "device_class": SensorDeviceClass.DISTANCE,
+        "unit": UnitOfLength.KILOMETERS,
+        "precision": 0,
+        "icon": "mdi:map-marker-distance",
+    },
+    {
+        "key": "odometer_km",
+        "name": "Odometer",
+        "unique_id_suffix": "odometer",
+        "device_class": SensorDeviceClass.DISTANCE,
+        "unit": UnitOfLength.KILOMETERS,
+        "state_class": SensorStateClass.TOTAL_INCREASING,
+        "precision": 1,
+        "icon": "mdi:counter",
+    },
+    {
+        "key": "battery_temperature",
+        "name": "Battery temperature",
+        "unique_id_suffix": "battery_temperature",
+        "device_class": SensorDeviceClass.TEMPERATURE,
+        "unit": UnitOfTemperature.CELSIUS,
+        "precision": 0,
+    },
+    {
+        "key": "interior_temperature",
+        "name": "Interior temperature",
+        "unique_id_suffix": "interior_temperature",
+        "device_class": SensorDeviceClass.TEMPERATURE,
+        "unit": UnitOfTemperature.CELSIUS,
+        "precision": 1,
+    },
+    {
+        "key": "battery_energy_kwh",
+        "name": "Battery energy",
+        "unique_id_suffix": "battery_energy",
+        "unit": "kWh",
+        "precision": 1,
+        "icon": "mdi:battery",
+    },
+    {
+        "key": "aux_voltage",
+        "name": "12V battery",
+        "unique_id_suffix": "aux_battery",
+        "device_class": SensorDeviceClass.VOLTAGE,
+        "unit": UnitOfElectricPotential.VOLT,
+        "precision": 1,
+        "icon": "mdi:car-battery",
+    },
+    {
+        "key": "telematics_battery",
+        "name": "Telematics battery",
+        "unique_id_suffix": "telematics_battery",
+        "device_class": SensorDeviceClass.BATTERY,
+        "unit": PERCENTAGE,
+        "precision": 0,
+    },
+    {
+        "key": "service_days",
+        "name": "Service due",
+        "unique_id_suffix": "service_due",
+        "device_class": SensorDeviceClass.DURATION,
+        "unit": UnitOfTime.DAYS,
+        "precision": 0,
+        "icon": "mdi:calendar-clock",
+    },
+    {
+        "key": "service_km",
+        "name": "Service distance",
+        "unique_id_suffix": "service_distance",
+        "device_class": SensorDeviceClass.DISTANCE,
+        "unit": UnitOfLength.KILOMETERS,
+        "precision": 0,
+        "icon": "mdi:wrench-clock",
+    },
+    {
+        "key": "speed_kmh",
+        "name": "Speed",
+        "unique_id_suffix": "speed",
+        "device_class": SensorDeviceClass.SPEED,
+        "unit": UnitOfSpeed.KILOMETERS_PER_HOUR,
+        "precision": 0,
+    },
+)
+
+
+class ReadingSensor(IraSensor):
+    """One numeric detail from the car."""
+
+    def __init__(
+        self,
+        coordinator: IraCoordinator,
+        entry: ConfigEntry,
+        *,
+        key: str,
+        name: str,
+        unique_id_suffix: str,
+        device_class: SensorDeviceClass | None = None,
+        unit: str | None = None,
+        state_class: SensorStateClass = SensorStateClass.MEASUREMENT,
+        precision: int | None = None,
+        icon: str | None = None,
+    ) -> None:
+        """Identify one reading."""
+        super().__init__(coordinator, entry)
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{self._vehicle_id}_{unique_id_suffix}"
+        self._attr_device_class = device_class
+        self._attr_native_unit_of_measurement = unit
+        self._attr_state_class = state_class
+        self._attr_suggested_display_precision = precision
+        self._attr_icon = icon
+
+    @property
+    def native_value(self) -> float | None:
+        """The latest reading, or none when the car did not report it."""
+        if self.coordinator.data is None:
+            return None
+        return getattr(self.coordinator.data, self._key)
+
+    @property
+    def available(self) -> bool:
+        """Unavailable until this value has been reported."""
+        return super().available and self.native_value is not None
 
 
 class TyrePressureSensor(IraSensor):

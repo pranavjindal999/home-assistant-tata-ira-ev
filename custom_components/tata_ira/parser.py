@@ -43,6 +43,27 @@ class VehicleStatus:
     back_left_tyre: float | None = None
     back_right_tyre: float | None = None
     tyre_pressure_low: bool | None = None
+    range_km: float | None = None
+    battery_temperature: float | None = None
+    battery_energy_kwh: float | None = None
+    aux_voltage: float | None = None
+    telematics_battery: float | None = None
+    service_days: float | None = None
+    service_km: float | None = None
+    charger_connected: bool | None = None
+    aux_battery_low: bool | None = None
+    car_warning: bool | None = None
+    front_left_door: bool | None = None
+    front_right_door: bool | None = None
+    rear_left_door: bool | None = None
+    rear_right_door: bool | None = None
+    bonnet: bool | None = None
+    tailgate: bool | None = None
+    odometer_km: float | None = None
+    interior_temperature: float | None = None
+    speed_kmh: float | None = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
@@ -71,6 +92,22 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
         back_left_tyre=_optional_pressure(results, "rearLeftWheelTyrePressure"),
         back_right_tyre=_optional_pressure(results, "rearRightWheelTyrePressure"),
         tyre_pressure_low=_tyre_pressure_low(results),
+        range_km=_optional_number(results, "distanceToEmpty"),
+        battery_temperature=_optional_number(results, "hvBattTemp"),
+        battery_energy_kwh=_positive_number(results, "hvBattKWh"),
+        aux_voltage=_positive_number(results, "vehicleBatteryLevel"),
+        telematics_battery=_optional_number(results, "tcuBatteryLevelPercentage"),
+        service_days=_optional_number(results, "nextServiceDueDays"),
+        service_km=_optional_number(results, "nextServiceDueKm"),
+        charger_connected=_optional_bool(results, "hvChargerConnectFlag"),
+        aux_battery_low=_optional_bool(results, "lowLvBattChargeFlag"),
+        car_warning=_car_warning(results),
+        front_left_door=_optional_bool(results, "leftFrontDoorOpenFlag"),
+        front_right_door=_optional_bool(results, "rightFrontDoorOpenFlag"),
+        rear_left_door=_optional_bool(results, "leftRearDoorOpenFlag"),
+        rear_right_door=_optional_bool(results, "rightRearDoorOpenFlag"),
+        bonnet=_optional_bool(results, "bonnetOpenFlag"),
+        tailgate=_optional_bool(results, "tailGateOpenFlag"),
     )
 
 
@@ -107,10 +144,80 @@ def _tyre_pressure_low(results: dict[str, Any]) -> bool | None:
     return any(states)
 
 
+def _optional_number(results: dict[str, Any], key: str) -> float | None:
+    if key not in results or results[key] is None or results[key] == "":
+        return None
+    try:
+        return float(results[key])
+    except (TypeError, ValueError):
+        return None
+
+
+def _positive_number(results: dict[str, Any], key: str) -> float | None:
+    value = _optional_number(results, key)
+    if value is None or value <= 0:
+        return None
+    return value
+
+
+def _car_warning(results: dict[str, Any]) -> bool | None:
+    """True when the car reports a fault the app shows as a warning lamp."""
+    seen = False
+    warning = False
+    for key in (
+        "milLampOnFlag",
+        "absStateFlag",
+        "srsWarningLampFlag",
+        "hvBatteryHighTempFlag",
+        "transmissionMalfunctionFlag",
+        "vCuMalfunctionFlag",
+        "epasStateFlag",
+        "driveMotorStatusFlag",
+        "brakeVacuumPumpStatusFlag",
+    ):
+        if key not in results or results[key] is None:
+            continue
+        seen = True
+        warning = warning or bool(results[key])
+    for key in ("eVSystemWarning", "hVCriticalState"):
+        value = _optional_number(results, key)
+        if value is None:
+            continue
+        seen = True
+        warning = warning or value != 0
+    if not seen:
+        return None
+    return warning
+
+
 def _optional_bool(results: dict[str, Any], key: str) -> bool | None:
     if key not in results or results[key] is None:
         return None
     return bool(results[key])
+
+
+def parse_vehicle_details(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read odometer, cabin temperature, speed, and location from vehicle state."""
+    results = payload.get("results") or {}
+    details: dict[str, Any] = {}
+    ac_on = parse_air_conditioning(payload)
+    if ac_on is not None:
+        details["ac_on"] = ac_on
+    odometer = _optional_number(results, "odometerInMeters")
+    if odometer is not None and odometer > 0:
+        details["odometer_km"] = round(odometer / 1000, 1)
+    interior = _optional_number(results, "vehicleInteriorTemperature")
+    if interior is not None:
+        details["interior_temperature"] = interior
+    speed = _optional_number(results, "speed")
+    if speed is not None:
+        details["speed_kmh"] = speed
+    latitude = _optional_number(results, "gpsLatitude")
+    longitude = _optional_number(results, "gpsLongitude")
+    if latitude not in (None, 0) and longitude not in (None, 0):
+        details["latitude"] = latitude
+        details["longitude"] = longitude
+    return details
 
 
 def parse_air_conditioning(payload: dict[str, Any]) -> bool | None:

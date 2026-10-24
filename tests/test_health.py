@@ -16,6 +16,7 @@ sys.modules["tata_ira_parser"] = _MODULE
 _SPEC.loader.exec_module(_MODULE)
 parse_vehicle_health = _MODULE.parse_vehicle_health
 parse_air_conditioning = _MODULE.parse_air_conditioning
+parse_vehicle_details = _MODULE.parse_vehicle_details
 parse_refresh_tokens = _MODULE.parse_refresh_tokens
 parse_ref_id = _MODULE.parse_ref_id
 parse_code_verifier = _MODULE.parse_code_verifier
@@ -122,6 +123,68 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertEqual(status.back_left_tyre, 38.4)
         self.assertIsNone(status.back_right_tyre)
         self.assertTrue(status.tyre_pressure_low)
+
+    def test_extra_health_details(self) -> None:
+        status = parse_vehicle_health(
+            {
+                "results": {
+                    "distanceToEmpty": 59,
+                    "hvBattTemp": 31,
+                    "hvBattKWh": 5,
+                    "hvBatterySohPercentage": 0,
+                    "vehicleBatteryLevel": 13.7,
+                    "tcuBatteryLevelPercentage": 93,
+                    "nextServiceDueDays": 73,
+                    "nextServiceDueKm": 3199,
+                    "hvChargerConnectFlag": False,
+                    "lowLvBattChargeFlag": False,
+                    "milLampOnFlag": False,
+                    "leftFrontDoorOpenFlag": True,
+                    "rightFrontDoorOpenFlag": False,
+                    "bonnetOpenFlag": False,
+                    "tailGateOpenFlag": False,
+                }
+            }
+        )
+        self.assertEqual(status.range_km, 59)
+        self.assertEqual(status.battery_temperature, 31)
+        self.assertEqual(status.battery_energy_kwh, 5)
+        self.assertEqual(status.aux_voltage, 13.7)
+        self.assertEqual(status.telematics_battery, 93)
+        self.assertEqual(status.service_days, 73)
+        self.assertEqual(status.service_km, 3199)
+        self.assertFalse(status.charger_connected)
+        self.assertFalse(status.aux_battery_low)
+        self.assertFalse(status.car_warning)
+        self.assertTrue(status.front_left_door)
+        self.assertFalse(status.bonnet)
+        self.assertIsNone(status.rear_left_door)
+
+    def test_zero_energy_and_a_warning_lamp(self) -> None:
+        status = parse_vehicle_health(
+            {"results": {"hvBattKWh": 0, "milLampOnFlag": True, "eVSystemWarning": 0}}
+        )
+        self.assertIsNone(status.battery_energy_kwh)
+        self.assertTrue(status.car_warning)
+
+    def test_vehicle_state_details(self) -> None:
+        details = parse_vehicle_details(
+            {
+                "results": {
+                    "airConditionOn": True,
+                    "odometerInMeters": "23144317",
+                    "vehicleInteriorTemperature": 29.0,
+                    "speed": 0,
+                    "gpsLatitude": 0,
+                    "gpsLongitude": 0,
+                }
+            }
+        )
+        self.assertTrue(details["ac_on"])
+        self.assertEqual(details["odometer_km"], 23144.3)
+        self.assertEqual(details["interior_temperature"], 29.0)
+        self.assertEqual(details["speed_kmh"], 0)
+        self.assertNotIn("latitude", details)
 
 
 class AirConditioningTests(unittest.TestCase):

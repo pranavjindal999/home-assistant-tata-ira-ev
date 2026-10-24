@@ -28,6 +28,7 @@ async def async_setup_entry(
             ChargingSensor(coordinator, entry),
             ConnectedSensor(coordinator, entry),
             TyrePressureSensor(coordinator, entry),
+            *(FlagSensor(coordinator, entry, *spec) for spec in _FLAGS),
         ]
     )
 
@@ -107,3 +108,52 @@ class TyrePressureSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
         if self.coordinator.data is None:
             return None
         return self.coordinator.data.tyre_pressure_low
+
+
+_FLAGS = (
+    ("charger_connected", "Charger connected", BinarySensorDeviceClass.PLUG, "charger"),
+    ("aux_battery_low", "12V battery low", BinarySensorDeviceClass.PROBLEM, "aux_battery_low"),
+    ("car_warning", "Warning", BinarySensorDeviceClass.PROBLEM, "warning"),
+    ("front_left_door", "Front left door", BinarySensorDeviceClass.DOOR, "front_left_door"),
+    ("front_right_door", "Front right door", BinarySensorDeviceClass.DOOR, "front_right_door"),
+    ("rear_left_door", "Rear left door", BinarySensorDeviceClass.DOOR, "rear_left_door"),
+    ("rear_right_door", "Rear right door", BinarySensorDeviceClass.DOOR, "rear_right_door"),
+    ("bonnet", "Bonnet", BinarySensorDeviceClass.DOOR, "bonnet"),
+    ("tailgate", "Tailgate", BinarySensorDeviceClass.DOOR, "tailgate"),
+)
+
+
+class FlagSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
+    """A yes-or-no detail from the car."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: IraCoordinator,
+        entry: ConfigEntry,
+        key: str,
+        name: str,
+        device_class: BinarySensorDeviceClass,
+        unique_id_suffix: str,
+    ) -> None:
+        """Identify one flag."""
+        super().__init__(coordinator)
+        self._key = key
+        self._attr_name = name
+        self._attr_device_class = device_class
+        vehicle_id = entry.data[CONF_VEHICLE_ID]
+        self._attr_unique_id = f"{vehicle_id}_{unique_id_suffix}"
+        self._attr_device_info = vehicle_device_info(entry)
+
+    @property
+    def available(self) -> bool:
+        """Available once the car has reported this flag."""
+        return super().available and self.is_on is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """True when the car reports this condition."""
+        if self.coordinator.data is None:
+            return None
+        return getattr(self.coordinator.data, self._key)

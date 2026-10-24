@@ -30,6 +30,24 @@ The same four pressures the iRA.ev app shows. The car reports them in psi, and H
 
 **Tyre pressure** is on when the app would mark any of those tyres as low. A blank or zero reading is left empty, which is how the app shows a tyre it is not reporting.
 
+### Car details
+
+These come from the same status the app already downloads. Several of them are not shown as numbers in the app.
+
+- **Range** is the remaining distance.
+- **Odometer** is the total distance.
+- **Battery temperature** is the high-voltage battery temperature.
+- **Battery energy** is the remaining energy, in kWh. A zero reading is left empty.
+- **Interior temperature** is the cabin temperature.
+- **12V battery** is the auxiliary battery voltage. **12V battery low** is on when the car reports that battery as low.
+- **Telematics battery** is the percentage of the car’s connected-car battery, separate from the high-voltage battery.
+- **Service due** is the days until the next service. **Service distance** is the kilometres until that service.
+- **Speed** is the speed from the latest status.
+- **Charger connected** is on when a charger is plugged in, including before charging starts.
+- **Warning** is on when the car reports a fault lamp, such as the check-engine, ABS, airbag, high battery temperature, motor, or transmission warning.
+- **Front left door**, **Front right door**, **Rear left door**, **Rear right door**, **Bonnet**, and **Tailgate** are on while that opening is open.
+- **Location** is where the car last reported it is.
+
 ### Air conditioning
 
 The air conditioner uses the same fixed cabin temperature as the iRA.ev app, 25°.
@@ -105,6 +123,26 @@ Default entity IDs use the device name Tata iRA.ev. If you rename the device, Ho
 | `sensor.tata_ira_ev_back_left_tyre` | Back left tyre pressure |
 | `sensor.tata_ira_ev_back_right_tyre` | Back right tyre pressure |
 | `binary_sensor.tata_ira_ev_tyre_pressure` | On when any tyre pressure is low |
+| `sensor.tata_ira_ev_range` | Remaining range |
+| `sensor.tata_ira_ev_odometer` | Odometer |
+| `sensor.tata_ira_ev_battery_temperature` | High-voltage battery temperature |
+| `sensor.tata_ira_ev_battery_energy` | Remaining battery energy |
+| `sensor.tata_ira_ev_interior_temperature` | Cabin temperature |
+| `sensor.tata_ira_ev_12v_battery` | 12V battery voltage |
+| `binary_sensor.tata_ira_ev_12v_battery_low` | On when the 12V battery is low |
+| `sensor.tata_ira_ev_telematics_battery` | Telematics battery percentage |
+| `sensor.tata_ira_ev_service_due` | Days until the next service |
+| `sensor.tata_ira_ev_service_distance` | Kilometres until the next service |
+| `sensor.tata_ira_ev_speed` | Speed from the latest status |
+| `binary_sensor.tata_ira_ev_charger_connected` | On when a charger is plugged in |
+| `binary_sensor.tata_ira_ev_warning` | On when the car reports a fault lamp |
+| `binary_sensor.tata_ira_ev_front_left_door` | On while the front left door is open |
+| `binary_sensor.tata_ira_ev_front_right_door` | On while the front right door is open |
+| `binary_sensor.tata_ira_ev_rear_left_door` | On while the rear left door is open |
+| `binary_sensor.tata_ira_ev_rear_right_door` | On while the rear right door is open |
+| `binary_sensor.tata_ira_ev_bonnet` | On while the bonnet is open |
+| `binary_sensor.tata_ira_ev_tailgate` | On while the tailgate is open |
+| `device_tracker.tata_ira_ev_location` | Last reported location |
 | `switch.tata_ira_ev_air_conditioning` | Starts the air conditioner for the saved duration, or stops it |
 | `number.tata_ira_ev_air_conditioning_duration` | Next air-conditioning run, 0 to 30 minutes, default 10 |
 | `switch.tata_ira_ev_approach_lights` | Approach lights |
