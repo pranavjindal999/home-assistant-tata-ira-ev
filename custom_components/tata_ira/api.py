@@ -90,6 +90,39 @@ class IraClient:
         self.refresh_token = refresh_token
         self._vehicle_id = vehicle_id
         self._api_key = api_key
+        self._refresh_lock = asyncio.Lock()
+
+    async def async_keep_connected(self) -> tuple[bool, str | None]:
+        """Wake the command link when it has gone to sleep.
+
+        Logging a command does not run it. The command itself is a later request,
+        and this method never sends that request.
+        """
+        access_token, rotated = await self._async_refresh()
+        headers = {
+            **self._vehicle_headers(access_token),
+            "Accept": "application/json",
+            "Cache-Control": "no-cache, no-store",
+            "X-Request-ID": str(uuid4()),
+        }
+        logged = await self._async_request(
+            "POST",
+            COMMAND_LOG_PATH,
+            json_body=command_log_body(
+                self._vehicle_id,
+                "LockVehicleCommand",
+                datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            ),
+            headers=headers,
+        )
+        self._raise_service_error(logged)
+        trace_id, connected = parse_command_log(logged)
+        if connected is True:
+            return True, rotated
+        if not trace_id:
+            return False, rotated
+        await self._async_wake(access_token, trace_id)
+        return True, rotated
 
     async def async_vehicle_status(self) -> tuple[VehicleStatus, str | None]:
         """Refresh the session and return battery and charging status.
@@ -270,8 +303,8 @@ class IraClient:
             await self._async_request("GET", WAKE_PATH, headers=headers)
         except IraError:
             _LOGGER.debug("Wake request was not accepted")
-        for _ in range(4):
-            await asyncio.sleep(2)
+        for _ in range(20):
+            await asyncio.sleep(3)
             try:
                 status = await self._async_request(
                     "GET",
@@ -347,6 +380,10 @@ class IraClient:
             raise IraError(message)
 
     async def _async_refresh(self) -> tuple[str, str | None]:
+        async with self._refresh_lock:
+            return await self._async_refresh_locked()
+
+    async def _async_refresh_locked(self) -> tuple[str, str | None]:
         body = {"refreshToken": self.refresh_token}
         payload = await self._async_request(
             "POST",

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import IraAuthError, IraClient, IraConnectionError, IraError
 from .parser import VehicleStatus
-from .const import CONF_REFRESH_TOKEN, DOMAIN, POLL_INTERVAL
+from .const import CONF_REFRESH_TOKEN, DOMAIN, KEEP_CONNECTED_INTERVAL, POLL_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +35,8 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self.client = client
         self.entry = entry
         self.ac_minutes = 10
+        self.connected: bool | None = None
+        self._connect_unsub: Callable[[], None] | None = None
 
     async def async_set_air_conditioning(self, on: bool) -> None:
         """Start the air conditioner for the saved duration, or stop it."""
@@ -110,6 +115,35 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self._store_refresh_token(rotated)
         if self.data is not None:
             self.async_set_updated_data(replace(self.data, locked=locked))
+
+    def async_start_connection(self) -> None:
+        """Keep the car's command link awake while Home Assistant is running."""
+        if self._connect_unsub is not None:
+            return
+        self._connect_unsub = async_track_time_interval(
+            self.hass, self._async_keep_connected, KEEP_CONNECTED_INTERVAL
+        )
+        self.hass.async_create_task(self._async_keep_connected(datetime.now()))
+
+    def async_stop_connection(self) -> None:
+        """Stop keeping the command link awake."""
+        if self._connect_unsub is not None:
+            self._connect_unsub()
+            self._connect_unsub = None
+
+    async def _async_keep_connected(self, _now: datetime) -> None:
+        try:
+            connected, rotated = await self.client.async_keep_connected()
+        except IraAuthError:
+            self.connected = False
+            self._request_reauth()
+        except (IraConnectionError, IraError) as err:
+            self.connected = False
+            _LOGGER.debug("The car command link is not awake: %s", err)
+        else:
+            self.connected = connected
+            self._store_refresh_token(rotated)
+        self.async_update_listeners()
 
     async def _async_update_data(self) -> VehicleStatus:
         try:

@@ -23,7 +23,12 @@ async def async_setup_entry(
 ) -> None:
     """Add the charging sensor."""
     coordinator: IraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([ChargingSensor(coordinator, entry)])
+    async_add_entities(
+        [
+            ChargingSensor(coordinator, entry),
+            ConnectedSensor(coordinator, entry),
+        ]
+    )
 
 
 class ChargingSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
@@ -44,3 +49,28 @@ class ChargingSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
     def is_on(self) -> bool | None:
         """True while the car reports it is charging."""
         return self.coordinator.data.charging
+
+
+class ConnectedSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
+    """On while the car's command link is awake."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Connected"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+
+    def __init__(self, coordinator: IraCoordinator, entry: ConfigEntry) -> None:
+        """Identify the connection sensor."""
+        super().__init__(coordinator)
+        vehicle_id = entry.data[CONF_VEHICLE_ID]
+        self._attr_unique_id = f"{vehicle_id}_connected"
+        self._attr_device_info = vehicle_device_info(entry)
+
+    @property
+    def available(self) -> bool:
+        """Available once a connection check has finished."""
+        return self.coordinator.connected is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """True while commands can reach the car without waiting for it to wake."""
+        return self.coordinator.connected
