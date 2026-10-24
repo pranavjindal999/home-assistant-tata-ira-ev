@@ -10,22 +10,33 @@ from uuid import uuid4
 import aiohttp
 
 from .const import (
+    ACCESS_TOKEN_PATH,
     API_HOST,
+    APP_API_KEY,
     APP_VERSION,
+    CHECK_PHONE_PATH,
     CLIENT_ID,
     CLIENT_SECRET,
     COMMAND_PATH,
     HEALTH_PATH,
+    PROFILE_PATH,
     REFRESH_PATH,
     STATE_PATH,
+    VERIFY_OTP_PATH,
 )
 from .parser import (
     VehicleStatus,
     ac_command_body,
     lock_command_body,
+    otp_verify_body,
     parse_air_conditioning,
+    parse_code_verifier,
+    parse_login_tokens,
+    parse_ref_id,
     parse_refresh_tokens,
     parse_vehicle_health,
+    parse_vehicle_ids,
+    service_error,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +48,11 @@ class IraError(Exception):
 
 class IraAuthError(IraError):
     """The saved session was rejected."""
+
+    def __init__(self, message: str, code: str | None = None) -> None:
+        """Store the service error code when one was returned."""
+        super().__init__(message)
+        self.code = code
 
 
 class IraConnectionError(IraError):
@@ -177,3 +193,107 @@ class IraClient:
         if not isinstance(payload, dict):
             raise IraError("iRA.ev returned an unexpected response")
         return payload
+
+
+def _login_headers(access_token: str | None = None) -> dict[str, str]:
+    headers = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "App-Version": APP_VERSION,
+        "x-api-key": APP_API_KEY,
+        "Accept": "application/json",
+    }
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+    return headers
+
+
+async def async_send_otp(
+    session: aiohttp.ClientSession, country_code: str, phone: str
+) -> str:
+    """Text a sign-in code and return the reference id for that code."""
+    payload = await _async_login_request(
+        session,
+        "POST",
+        CHECK_PHONE_PATH,
+        json_body={"countryCode": country_code, "phone": phone, "sendOtp": True},
+    )
+    ref_id = parse_ref_id(payload)
+    if not ref_id:
+        raise IraAuthError("iRA.ev did not send a verification code")
+    return ref_id
+
+
+async def async_sign_in(
+    session: aiohttp.ClientSession,
+    country_code: str,
+    phone: str,
+    otp: str,
+    ref_id: str,
+) -> tuple[str, list[str]]:
+    """Exchange the sign-in code for a refresh token and the account's cars."""
+    verified = await _async_login_request(
+        session,
+        "POST",
+        VERIFY_OTP_PATH,
+        json_body=otp_verify_body(country_code, phone, otp, ref_id),
+    )
+    verifier = parse_code_verifier(verified)
+    if not verifier:
+        raise IraAuthError("That code was not accepted")
+    tokens = await _async_login_request(
+        session,
+        "POST",
+        ACCESS_TOKEN_PATH,
+        json_body={"codeVerifier": verifier},
+    )
+    access_token, refresh_token = parse_login_tokens(tokens)
+    if not access_token or not refresh_token:
+        raise IraAuthError("iRA.ev did not return a session")
+    profile = await _async_login_request(
+        session,
+        "GET",
+        PROFILE_PATH,
+        headers=_login_headers(access_token),
+    )
+    return refresh_token, parse_vehicle_ids(profile)
+
+
+async def _async_login_request(
+    session: aiohttp.ClientSession,
+    method: str,
+    path: str,
+    json_body: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    try:
+        async with session.request(
+            method,
+            f"{API_HOST}{path}",
+            headers=headers or _login_headers(),
+            json=json_body,
+            timeout=aiohttp.ClientTimeout(total=20),
+        ) as response:
+            try:
+                payload = await response.json(content_type=None)
+            except (aiohttp.ContentTypeError, ValueError):
+                payload = None
+            if not isinstance(payload, dict):
+                if response.status in (401, 403, 400):
+                    raise IraAuthError(f"iRA.ev returned HTTP {response.status}")
+                if response.status >= 400:
+                    raise IraError(f"iRA.ev returned HTTP {response.status}")
+                raise IraError("iRA.ev returned an unexpected response")
+            message, code = service_error(payload)
+            if response.status in (401, 403, 400) or message:
+                raise IraAuthError(
+                    message or f"iRA.ev returned HTTP {response.status}",
+                    code=code,
+                )
+            if response.status >= 400:
+                raise IraError(f"iRA.ev returned HTTP {response.status}")
+            return payload
+    except (IraError, IraAuthError):
+        raise
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise IraConnectionError("Cannot reach the iRA.ev service") from err

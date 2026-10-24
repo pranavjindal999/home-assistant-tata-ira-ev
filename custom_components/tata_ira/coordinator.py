@@ -56,10 +56,21 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
     async def _async_update_data(self) -> VehicleStatus:
         try:
             status, rotated = await self.client.async_vehicle_status()
-        except (IraAuthError, IraConnectionError, IraError) as err:
+        except IraAuthError as err:
+            self._request_reauth()
+            raise UpdateFailed(str(err) or err.__class__.__name__) from err
+        except (IraConnectionError, IraError) as err:
             raise UpdateFailed(str(err) or err.__class__.__name__) from err
         self._store_refresh_token(rotated)
         return status
+
+    def _request_reauth(self) -> None:
+        entry_id = self.entry.entry_id
+        for flow in self.hass.config_entries.flow.async_progress():
+            context = flow.get("context") or {}
+            if context.get("source") == "reauth" and context.get("entry_id") == entry_id:
+                return
+        self.entry.async_start_reauth(self.hass)
 
     def _store_refresh_token(self, rotated: str | None) -> None:
         if rotated and self.entry.data.get(CONF_REFRESH_TOKEN) != rotated:

@@ -18,17 +18,11 @@ Readings refresh every 30 seconds. Press Refresh to update immediately. This is 
 2. Restart Home Assistant.
 3. Go to **Settings → Devices & services → Add integration**, and choose **Tata iRA.ev**.
 
-## Setup values
+## Setup
 
-The form asks for three values from the phone's own iRA.ev session:
+The form asks for the mobile number on the iRA.ev account, then the code sent by text. The car and session are picked up from that sign-in. If the account has more than one car, choose which one to add.
 
-| Field | Where it appears |
-| --- | --- |
-| Vehicle ID | `vehicleId` header on a vehicle-health request |
-| API key | `x-api-key` header on that same request |
-| Refresh token | `refreshToken` in the body of a refresh-token request |
-
-Those requests go to `evcx.api.tatamotors`. If you sign out of iRA.ev or change the account password, paste a new refresh token.
+If iRA.ev later rejects the saved session, Home Assistant asks for the mobile number and a new code.
 
 ## Entities
 

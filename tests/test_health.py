@@ -17,6 +17,11 @@ _SPEC.loader.exec_module(_MODULE)
 parse_vehicle_health = _MODULE.parse_vehicle_health
 parse_air_conditioning = _MODULE.parse_air_conditioning
 parse_refresh_tokens = _MODULE.parse_refresh_tokens
+parse_ref_id = _MODULE.parse_ref_id
+parse_code_verifier = _MODULE.parse_code_verifier
+parse_login_tokens = _MODULE.parse_login_tokens
+parse_vehicle_ids = _MODULE.parse_vehicle_ids
+otp_verify_body = _MODULE.otp_verify_body
 ac_command_body = _MODULE.ac_command_body
 lock_command_body = _MODULE.lock_command_body
 
@@ -105,6 +110,46 @@ class AirConditioningTests(unittest.TestCase):
             ),
             ("access", "next"),
         )
+
+    def test_sign_in_reads_the_code_verifier_and_session(self) -> None:
+        self.assertEqual(parse_ref_id({"results": {"refId": "ref-1"}}), "ref-1")
+        self.assertIsNone(parse_ref_id({"results": {}}))
+        self.assertEqual(
+            parse_code_verifier({"results": {"codeVerifier": "verifier"}}),
+            "verifier",
+        )
+        self.assertEqual(
+            parse_login_tokens(
+                {
+                    "results": {
+                        "accessTokenDetails": {
+                            "accessToken": "access",
+                            "refreshToken": "refresh",
+                        }
+                    }
+                }
+            ),
+            ("access", "refresh"),
+        )
+        self.assertEqual(
+            parse_vehicle_ids(
+                {
+                    "results": {
+                        "vehicles": [
+                            {"chassisNumber": "CAR1"},
+                            {"chassisNumber": ""},
+                            {"chassisNumber": "CAR1"},
+                            {"vehicleName": "ignored"},
+                        ]
+                    }
+                }
+            ),
+            ["CAR1"],
+        )
+        body = otp_verify_body("91", "9000000000", "123456", "ref-1")
+        self.assertEqual(body["otp"], "123456")
+        self.assertEqual(body["refId"], "ref-1")
+        self.assertEqual(body["consentType"], "Explicit")
 
     def test_lock_and_unlock_commands(self) -> None:
         command, body = lock_command_body(True, "trace-lock")

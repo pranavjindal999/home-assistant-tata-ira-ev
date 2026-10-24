@@ -2,22 +2,41 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect the Tata EV",
-        "description": "Battery, charging, air conditioning, and lock state are read from iRA.ev every 30 seconds. Use the vehicleId and x-api-key headers from a vehicle-health request, and the refreshToken from a refresh-token request.",
+        "title": "Sign in to iRA.ev",
+        "description": "Enter the mobile number on the iRA.ev account. A code will be sent by text.",
         "data": {
-          "vehicle_id": "Vehicle ID",
-          "api_key": "API key",
-          "refresh_token": "Refresh token"
+          "country_code": "Country code",
+          "phone": "Mobile number"
+        }
+      },
+      "otp": {
+        "title": "Enter the code",
+        "description": "Enter the code sent to {phone}.",
+        "data": {
+          "otp": "Code"
+        }
+      },
+      "vehicle": {
+        "title": "Choose the car",
+        "description": "This account has more than one car.",
+        "data": {
+          "vehicle_id": "Car"
         }
       }
     },
     "error": {
-      "invalid_auth": "iRA.ev rejected this session. Check the vehicle ID, API key, and refresh token.",
+      "invalid_auth": "iRA.ev rejected the sign-in. Request a new code and try again.",
+      "invalid_otp": "That code was not accepted.",
+      "invalid_phone": "Enter the mobile number for this account.",
+      "otp_failed": "iRA.ev did not send a code for this number.",
+      "no_vehicle": "This account has no car linked to it.",
       "cannot_connect": "Cannot reach the iRA.ev service.",
       "unknown": "iRA.ev returned an unexpected response."
     },
     "abort": {
-      "already_configured": "This car is already set up."
+      "already_configured": "This car is already set up.",
+      "wrong_account": "That number belongs to a different car.",
+      "reauth_successful": "Signed in again."
     }
   }
 }

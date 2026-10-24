@@ -93,3 +93,96 @@ def lock_command_body(locked: bool, trace_id: str) -> tuple[str, dict[str, Any]]
     """Build the lock or unlock command the iRA.ev app sends."""
     command = "LockVehicleCommand" if locked else "UnlockVehicleCommand"
     return command, {"config": None, "commandTraceId": trace_id}
+
+
+def service_error(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return the service error message and code, when the body contains one."""
+    error = payload.get("errorData")
+    if not isinstance(error, dict):
+        return None, None
+    items = error.get("errorList")
+    if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+        return "iRA.ev rejected the request", None
+    message = items[0].get("errorMsg")
+    code = items[0].get("errorCode")
+    if not isinstance(message, str) or not message:
+        message = "iRA.ev rejected the request"
+    if not isinstance(code, str) or not code:
+        code = None
+    return message, code
+
+
+def parse_ref_id(payload: dict[str, Any]) -> str | None:
+    """Read the reference id returned when a sign-in code is sent."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None
+    ref_id = results.get("refId")
+    if not isinstance(ref_id, str) or not ref_id:
+        return None
+    return ref_id
+
+
+def parse_code_verifier(payload: dict[str, Any]) -> str | None:
+    """Read the verifier returned after the sign-in code is accepted."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None
+    verifier = results.get("codeVerifier")
+    if not isinstance(verifier, str) or not verifier:
+        return None
+    return verifier
+
+
+def parse_login_tokens(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return the access token and refresh token from a sign-in response."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        results = {}
+    details = results.get("accessTokenDetails")
+    if not isinstance(details, dict):
+        details = results
+    access_token = details.get("accessToken") or payload.get("accessToken")
+    refresh_token = details.get("refreshToken") or payload.get("refreshToken")
+    if not isinstance(access_token, str) or not access_token:
+        return None, None
+    if not isinstance(refresh_token, str) or not refresh_token:
+        return access_token, None
+    return access_token, refresh_token
+
+
+def parse_vehicle_ids(payload: dict[str, Any]) -> list[str]:
+    """Return the chassis ids of cars on the signed-in account."""
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return []
+    vehicles = results.get("vehicles")
+    if not isinstance(vehicles, list):
+        return []
+    ids: list[str] = []
+    for vehicle in vehicles:
+        if not isinstance(vehicle, dict):
+            continue
+        chassis = vehicle.get("chassisNumber")
+        if isinstance(chassis, str) and chassis and chassis not in ids:
+            ids.append(chassis)
+    return ids
+
+
+def otp_verify_body(
+    country_code: str, phone: str, otp: str, ref_id: str
+) -> dict[str, Any]:
+    """Build the sign-in code request the iRA.ev app sends."""
+    return {
+        "countryCode": country_code,
+        "phone": phone,
+        "otp": otp,
+        "refId": ref_id,
+        "redirectUrl": "https://prod-ev.tatamotors.com/",
+        "consentType": "Explicit",
+        "programTnC": True,
+        "privacyPolicyAccepted": True,
+        "marketingCommunication": False,
+        "loyalCustomer": "Y",
+        "storeId": "store_id",
+    }
