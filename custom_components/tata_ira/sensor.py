@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from homeassistant.components.sensor import (
-    DOMAIN as SENSOR_DOMAIN,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -11,7 +10,6 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfPressure, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -27,7 +25,6 @@ async def async_setup_entry(
 ) -> None:
     """Add the battery and charge-time sensors."""
     coordinator: IraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    _keep_tyre_pressure_in_psi(hass, entry)
     async_add_entities(
         [
             BatterySensor(coordinator, entry),
@@ -128,7 +125,6 @@ class TyrePressureSensor(IraSensor):
     _attr_device_class = SensorDeviceClass.PRESSURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPressure.PSI
-    _attr_suggested_unit_of_measurement = UnitOfPressure.PSI
     _attr_suggested_display_precision = 1
     _attr_icon = "mdi:tire"
 
@@ -158,24 +154,3 @@ class TyrePressureSensor(IraSensor):
     def available(self) -> bool:
         """Unavailable when the car has not reported this tyre."""
         return super().available and self.native_value is not None
-
-
-def _keep_tyre_pressure_in_psi(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Show tyre pressure in psi even when Home Assistant uses metric units.
-
-    A previous version let Home Assistant convert these readings to kPa.
-    """
-    vehicle_id = entry.data[CONF_VEHICLE_ID]
-    registry = er.async_get(hass)
-    for entity in registry.entities.values():
-        if not entity.unique_id or not entity.unique_id.startswith(f"{vehicle_id}_"):
-            continue
-        if not entity.unique_id.endswith("_tyre"):
-            continue
-        sensor_options = dict(entity.options.get(SENSOR_DOMAIN, {}))
-        if sensor_options.get("unit_of_measurement") in (None, UnitOfPressure.PSI):
-            continue
-        sensor_options["unit_of_measurement"] = UnitOfPressure.PSI
-        registry.async_update_entity_options(
-            entity.entity_id, SENSOR_DOMAIN, sensor_options
-        )

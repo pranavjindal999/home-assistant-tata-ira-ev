@@ -21,7 +21,7 @@ Home Assistant reads these every 30 seconds. **Refresh** reads them immediately.
 
 ### Tyre pressure
 
-The same four pressures the iRA.ev app shows, in psi:
+The same four pressures the iRA.ev app shows. The car reports them in psi, and Home Assistant can display another pressure unit from the entity settings:
 
 - **Front left tyre**
 - **Front right tyre**
@@ -100,10 +100,10 @@ Default entity IDs use the device name Tata iRA.ev. If you rename the device, Ho
 | `sensor.tata_ira_ev_battery` | Battery percentage |
 | `binary_sensor.tata_ira_ev_charging` | On while the car is charging |
 | `sensor.tata_ira_ev_charge_time_remaining` | Minutes left until full, only while charging |
-| `sensor.tata_ira_ev_front_left_tyre` | Front left tyre pressure, psi |
-| `sensor.tata_ira_ev_front_right_tyre` | Front right tyre pressure, psi |
-| `sensor.tata_ira_ev_back_left_tyre` | Back left tyre pressure, psi |
-| `sensor.tata_ira_ev_back_right_tyre` | Back right tyre pressure, psi |
+| `sensor.tata_ira_ev_front_left_tyre` | Front left tyre pressure |
+| `sensor.tata_ira_ev_front_right_tyre` | Front right tyre pressure |
+| `sensor.tata_ira_ev_back_left_tyre` | Back left tyre pressure |
+| `sensor.tata_ira_ev_back_right_tyre` | Back right tyre pressure |
 | `binary_sensor.tata_ira_ev_tyre_pressure` | On when any tyre pressure is low |
 | `switch.tata_ira_ev_air_conditioning` | Starts the air conditioner for the saved duration, or stops it |
 | `number.tata_ira_ev_air_conditioning_duration` | Next air-conditioning run, 0 to 30 minutes, default 10 |
