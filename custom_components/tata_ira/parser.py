@@ -38,6 +38,11 @@ class VehicleStatus:
     headlights: bool | None = None
     hazard_lights: bool | None = None
     engine_on: bool | None = None
+    front_left_tyre: float | None = None
+    front_right_tyre: float | None = None
+    back_left_tyre: float | None = None
+    back_right_tyre: float | None = None
+    tyre_pressure_low: bool | None = None
 
 
 def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
@@ -61,7 +66,45 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
         headlights=_optional_bool(results, "positionLampOnFlag"),
         hazard_lights=_optional_bool(results, "hazardLampOnFlag"),
         engine_on=_optional_bool(results, "crankOn"),
+        front_left_tyre=_optional_pressure(results, "frontLeftWheelTyrePressure"),
+        front_right_tyre=_optional_pressure(results, "frontRightWheelTyrePressure"),
+        back_left_tyre=_optional_pressure(results, "rearLeftWheelTyrePressure"),
+        back_right_tyre=_optional_pressure(results, "rearRightWheelTyrePressure"),
+        tyre_pressure_low=_tyre_pressure_low(results),
     )
+
+
+def _optional_pressure(results: dict[str, Any], key: str) -> float | None:
+    """Read a tyre pressure in psi. Zero is the app's blank value."""
+    if key not in results or results[key] is None or results[key] == "":
+        return None
+    try:
+        value = float(results[key])
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
+def _tyre_pressure_low(results: dict[str, Any]) -> bool | None:
+    """True when the app would mark any tyre as low."""
+    states = []
+    for key in (
+        "frontLeftWheelTyrePressureState",
+        "frontRightWheelTyrePressureState",
+        "rearLeftWheelTyrePressureState",
+        "rearRightWheelTyrePressureState",
+    ):
+        if key not in results or results[key] is None:
+            continue
+        try:
+            states.append(float(results[key]) == 1.0)
+        except (TypeError, ValueError):
+            continue
+    if not states:
+        return None
+    return any(states)
 
 
 def _optional_bool(results: dict[str, Any], key: str) -> bool | None:

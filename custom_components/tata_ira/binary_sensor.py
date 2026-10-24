@@ -27,6 +27,7 @@ async def async_setup_entry(
         [
             ChargingSensor(coordinator, entry),
             ConnectedSensor(coordinator, entry),
+            TyrePressureSensor(coordinator, entry),
         ]
     )
 
@@ -74,3 +75,35 @@ class ConnectedSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
     def is_on(self) -> bool | None:
         """True while commands can reach the car without waiting for it to wake."""
         return self.coordinator.connected
+
+
+class TyrePressureSensor(CoordinatorEntity[IraCoordinator], BinarySensorEntity):
+    """On when the app would mark a tyre pressure as low."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Tyre pressure"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_icon = "mdi:tire"
+
+    def __init__(self, coordinator: IraCoordinator, entry: ConfigEntry) -> None:
+        """Identify the tyre-pressure warning."""
+        super().__init__(coordinator)
+        vehicle_id = entry.data[CONF_VEHICLE_ID]
+        self._attr_unique_id = f"{vehicle_id}_tyre_pressure"
+        self._attr_device_info = vehicle_device_info(entry)
+
+    @property
+    def available(self) -> bool:
+        """Available once the car has reported tyre status."""
+        return (
+            super().available
+            and self.coordinator.data is not None
+            and self.coordinator.data.tyre_pressure_low is not None
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """True when any tyre is low."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.tyre_pressure_low

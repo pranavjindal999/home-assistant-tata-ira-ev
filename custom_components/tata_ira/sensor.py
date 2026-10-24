@@ -8,7 +8,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTime
+from homeassistant.const import PERCENTAGE, UnitOfPressure, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -29,6 +29,34 @@ async def async_setup_entry(
         [
             BatterySensor(coordinator, entry),
             ChargeTimeSensor(coordinator, entry),
+            TyrePressureSensor(
+                coordinator,
+                entry,
+                key="front_left_tyre",
+                name="Front left tyre",
+                unique_id_suffix="front_left_tyre",
+            ),
+            TyrePressureSensor(
+                coordinator,
+                entry,
+                key="front_right_tyre",
+                name="Front right tyre",
+                unique_id_suffix="front_right_tyre",
+            ),
+            TyrePressureSensor(
+                coordinator,
+                entry,
+                key="back_left_tyre",
+                name="Back left tyre",
+                unique_id_suffix="back_left_tyre",
+            ),
+            TyrePressureSensor(
+                coordinator,
+                entry,
+                key="back_right_tyre",
+                name="Back right tyre",
+                unique_id_suffix="back_right_tyre",
+            ),
         ]
     )
 
@@ -89,3 +117,40 @@ class ChargeTimeSensor(IraSensor):
             super().available
             and self.coordinator.data.charge_minutes_remaining is not None
         )
+
+
+class TyrePressureSensor(IraSensor):
+    """One tyre pressure, in the same psi figure the iRA.ev app shows."""
+
+    _attr_device_class = SensorDeviceClass.PRESSURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPressure.PSI
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:tire"
+
+    def __init__(
+        self,
+        coordinator: IraCoordinator,
+        entry: ConfigEntry,
+        *,
+        key: str,
+        name: str,
+        unique_id_suffix: str,
+    ) -> None:
+        """Identify one tyre."""
+        super().__init__(coordinator, entry)
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{self._vehicle_id}_{unique_id_suffix}"
+
+    @property
+    def native_value(self) -> float | None:
+        """Pressure in psi."""
+        if self.coordinator.data is None:
+            return None
+        return getattr(self.coordinator.data, self._key)
+
+    @property
+    def available(self) -> bool:
+        """Unavailable when the car has not reported this tyre."""
+        return super().available and self.native_value is not None

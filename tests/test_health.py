@@ -97,8 +97,31 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertFalse(status.headlights)
         self.assertTrue(status.hazard_lights)
         self.assertFalse(status.engine_on)
+        self.assertIsNone(status.front_left_tyre)
         self.assertEqual(empty_command_body("trace")["config"], {})
         self.assertEqual(timed_command_body(10, "trace")["config"]["settimer"], "600")
+
+    def test_tyre_pressures_are_psi_and_zero_is_blank(self) -> None:
+        status = parse_vehicle_health(
+            {
+                "results": {
+                    "frontLeftWheelTyrePressure": 36.8,
+                    "frontRightWheelTyrePressure": "39.2",
+                    "rearLeftWheelTyrePressure": 38.4,
+                    "rearRightWheelTyrePressure": 0,
+                    "frontLeftWheelTyrePressureState": 0,
+                    "frontRightWheelTyrePressureState": 1,
+                    "rearLeftWheelTyrePressureState": 0,
+                    "rearRightWheelTyrePressureState": 0,
+                    "spareTyrePressure": 0,
+                }
+            }
+        )
+        self.assertEqual(status.front_left_tyre, 36.8)
+        self.assertEqual(status.front_right_tyre, 39.2)
+        self.assertEqual(status.back_left_tyre, 38.4)
+        self.assertIsNone(status.back_right_tyre)
+        self.assertTrue(status.tyre_pressure_low)
 
 
 class AirConditioningTests(unittest.TestCase):
