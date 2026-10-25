@@ -1,6 +1,6 @@
 # Tata iRA.ev
 
-Home Assistant custom integration for a Tata Motors electric vehicle that uses the [iRA.ev](https://www.tatamotors.com/) app. It reads the car every 30 seconds and sends the same remote commands the app sends: air conditioning, lights, horn, and lock.
+Home Assistant custom integration for a Tata Motors electric vehicle that uses the [iRA.ev](https://www.tatamotors.com/) app. It follows the car's live updates, and sends the same remote commands the app sends: air conditioning, lights, horn, and lock.
 
 The **Tata iRA.ev** dashboard card puts the battery, the controls, and the sensors on one card.
 
@@ -19,7 +19,7 @@ Requires Home Assistant 2024.8.0 or newer.
 - **Charging** is on while the car is charging.
 - **Charge time remaining** is the minutes left until full. It only has a value while the car is charging.
 
-Home Assistant reads these every 30 seconds. **Refresh** reads them immediately.
+These follow the car's live updates. **Refresh** reads them immediately. If the live channel is down, Home Assistant checks the car every 30 seconds.
 
 ### Tyre pressure
 
@@ -189,7 +189,7 @@ The switch stays loading until iRA.ev reports that the air conditioner has start
 
 ## Limits
 
-Readings are polled from iRA.ev every 30 seconds. This integration does not subscribe to the app’s live push channel.
+The dashboard follows the same live channel as the iRA.ev home screen. A full reading is still checked every 10 minutes. If that channel is unavailable, readings fall back to a check every 30 seconds.
 
 The app also lists beep and flash. This integration does not include that command, because the car’s connection does not provide one.
 

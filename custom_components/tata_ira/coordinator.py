@@ -1,4 +1,4 @@
-"""Poll battery, charging, air conditioning, and lock state for one Tata EV."""
+"""Keep one Tata EV current from its live channel, with a poll as fallback."""
 
 from __future__ import annotations
 
@@ -13,14 +13,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import IraAuthError, IraClient, IraConnectionError, IraError, transient_api_error
-from .parser import VehicleStatus
 from .const import (
     CONF_REFRESH_TOKEN,
     DOMAIN,
     KEEP_CONNECTED_INTERVAL,
+    LIVE_RECONCILE_INTERVAL,
     POLL_INTERVAL,
     RECONNECT_INTERVAL,
 )
+from .live import LiveUnavailable
+from .parser import VehicleStatus, apply_lks_snapshot, merge_live_payload, note_live_command
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
     def __init__(
         self, hass: HomeAssistant, client: IraClient, entry: ConfigEntry
     ) -> None:
-        """Poll the car every 30 seconds."""
+        """Check the car every 30 seconds until the live channel connects."""
         super().__init__(
             hass,
             _LOGGER,
@@ -43,8 +45,11 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         self.ac_minutes = 10
         self.connected: bool | None = None
         self._connect_task: asyncio.Task[None] | None = None
+        self._live_task: asyncio.Task[None] | None = None
         self._connect_stop = asyncio.Event()
         self._state_lock = asyncio.Lock()
+        self._latest_live: dict[str, Any] | None = None
+        self._live_connected = False
 
     async def async_set_air_conditioning(self, on: bool) -> None:
         """Start the air conditioner for the saved duration, or stop it."""
@@ -118,6 +123,7 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
             self._adopt_link_state()
             if field is None or expected is None or self.data is None:
                 return
+            self._latest_live = note_live_command(self._latest_live, field, expected)
             self.async_set_updated_data(replace(self.data, **{field: expected}))
 
     def async_start_connection(self) -> None:
@@ -126,13 +132,18 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
             return
         self._connect_stop.clear()
         self._connect_task = self.hass.async_create_task(self._async_connection_loop())
+        if self._live_task is None:
+            self._live_task = self.hass.async_create_task(self._async_live_loop())
 
     def async_stop_connection(self) -> None:
-        """Stop keeping the command link awake."""
+        """Stop the command link and the live vehicle channel."""
         self._connect_stop.set()
         if self._connect_task is not None:
             self._connect_task.cancel()
             self._connect_task = None
+        if self._live_task is not None:
+            self._live_task.cancel()
+            self._live_task = None
 
     async def _async_connection_loop(self) -> None:
         """Connect at startup, then keep retrying for as long as this runs."""
@@ -179,9 +190,65 @@ class IraCoordinator(DataUpdateCoordinator[VehicleStatus]):
         if self.client.link_connected is not None:
             self._set_connected(self.client.link_connected)
 
+    async def _async_live_loop(self) -> None:
+        """Follow the car's live channel, and fall back to polling if it drops."""
+        failures = 0
+        while not self._connect_stop.is_set():
+            try:
+                async for payload, rotated, connected in self.client.async_live_updates():
+                    failures = 0
+                    self._store_refresh_token(rotated)
+                    if connected:
+                        self._set_live(True)
+                    if not payload:
+                        continue
+                    async with self._state_lock:
+                        self._latest_live = merge_live_payload(self._latest_live, payload)
+                        updated = apply_lks_snapshot(self.data, self._latest_live)
+                        if updated != self.data:
+                            self.async_set_updated_data(updated)
+            except asyncio.CancelledError:
+                raise
+            except IraAuthError:
+                self._set_live(False)
+                self._request_reauth()
+                return
+            except LiveUnavailable as err:
+                self._set_live(False)
+                if failures == 0:
+                    _LOGGER.warning(
+                        "Live vehicle updates are unavailable (%s). "
+                        "Readings stay on the 30 second check.",
+                        err,
+                    )
+            except Exception as err:
+                self._set_live(False)
+                _LOGGER.debug("Live vehicle updates stopped: %s", type(err).__name__)
+            failures += 1
+            try:
+                await asyncio.wait_for(
+                    self._connect_stop.wait(), min(300, 15 * failures)
+                )
+            except TimeoutError:
+                continue
+            return
+
+    def _set_live(self, connected: bool) -> None:
+        if connected:
+            self.update_interval = LIVE_RECONCILE_INTERVAL
+            if not self._live_connected:
+                _LOGGER.info("Live vehicle updates are connected")
+            self._live_connected = True
+            return
+        self.update_interval = POLL_INTERVAL
+        self._live_connected = False
+
     async def _async_update_data(self) -> VehicleStatus:
+        status = await self._async_fetch_status()
         async with self._state_lock:
-            return await self._async_fetch_status()
+            if self._latest_live:
+                return apply_lks_snapshot(status, self._latest_live)
+            return status
 
     async def _async_fetch_status(self) -> VehicleStatus:
         try:

@@ -95,6 +95,7 @@ class IraClient:
         self._vehicle_id = vehicle_id
         self._api_key = api_key
         self.link_connected: bool | None = None
+        self._lks_key: dict[str, str] = {}
         self._refresh_lock = asyncio.Lock()
         self._api_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
@@ -154,6 +155,19 @@ class IraClient:
         else:
             status = replace(status, **details)
         return status, rotated
+
+    async def async_live_updates(self):
+        """Yield live snapshots from the same channel the iRA.ev home screen uses."""
+        from .live import stream_live
+
+        async for update in stream_live(
+            self._session,
+            self._async_refresh,
+            self._vehicle_id,
+            self._api_key,
+            self._lks_key,
+        ):
+            yield update
 
     async def async_set_air_conditioning(
         self, on: bool, minutes: int

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 AC_MINUTES_MIN = 0
@@ -465,6 +465,178 @@ def parse_vehicle_ids(payload: dict[str, Any]) -> list[str]:
         if isinstance(chassis, str) and chassis and chassis not in ids:
             ids.append(chassis)
     return ids
+
+
+def merge_live_payload(previous: dict[str, Any] | None, payload: dict[str, Any]) -> dict[str, Any]:
+    """Fold one live message into the signals already received."""
+    merged = dict(previous or {})
+    for key, value in payload.items():
+        if key == "dynamicSignals" and isinstance(value, dict):
+            current = merged.get("dynamicSignals")
+            signals = dict(current) if isinstance(current, dict) else {}
+            signals.update(value)
+            merged["dynamicSignals"] = signals
+        else:
+            merged[key] = value
+    return merged
+
+
+def apply_lks_snapshot(
+    current: VehicleStatus | None, payload: dict[str, Any]
+) -> VehicleStatus:
+    """Merge one last-known-state snapshot onto the latest car reading.
+
+    Signals the snapshot leaves out stay as they were. Lock uses the same
+    polarity as vehicle health: the signal is true when the car is unlocked.
+    """
+    base = current or VehicleStatus(None, None, None)
+    updates: dict[str, Any] = {}
+    battery = _live_number(payload, "V_Batt_HVBt_SoCPercn")
+    if battery is not None:
+        updates["battery_percent"] = battery
+    charging = _live_flag(payload, "V_Batt_HVBt_ChargState")
+    if charging is not None:
+        updates["charging"] = charging
+    remaining = _live_charge_minutes(base, payload, charging)
+    if "charge_minutes_remaining" in remaining:
+        updates["charge_minutes_remaining"] = remaining["charge_minutes_remaining"]
+    locked = _live_flag(payload, "V_Secu_ACCS_VehLockSt")
+    if locked is not None:
+        updates["locked"] = not locked
+    ac_on = _live_flag(payload, "V_Cabn_HVAC_ActivAc")
+    if ac_on is not None:
+        updates["ac_on"] = ac_on
+    for signal, field in _LIVE_FLAGS.items():
+        flag = _live_flag(payload, signal)
+        if flag is not None:
+            updates[field] = flag
+    for signal, field in _LIVE_PRESSURES.items():
+        pressure = _live_number(payload, signal)
+        if pressure is not None and pressure > 0:
+            updates[field] = pressure
+    low = _live_tyre_low(payload)
+    if low is not None:
+        updates["tyre_pressure_low"] = low
+    distance = _live_number(payload, "V_Pwtn_Emtr_DTeInfo")
+    if distance is not None:
+        updates["range_km"] = distance
+    latitude = _live_number(payload, "V_Conn_Gloc_Latitude")
+    longitude = _live_number(payload, "V_Conn_Gloc_Longitude")
+    if latitude not in (None, 0) and longitude not in (None, 0):
+        updates["latitude"] = latitude
+        updates["longitude"] = longitude
+    if not updates:
+        return base
+    return replace(base, **updates)
+
+
+def note_live_command(
+    payload: dict[str, Any] | None, field: str, expected: bool
+) -> dict[str, Any] | None:
+    """Keep a command in the live snapshot until the car reports it."""
+    mapped = _LIVE_COMMANDS.get(field)
+    if payload is None or mapped is None:
+        return payload
+    signal, invert = mapped
+    updated = dict(payload)
+    updated[signal] = {"value": (not expected) if invert else expected}
+    return updated
+
+
+_LIVE_FLAGS = {
+    "V_Body_Lamp_ApproachOn": "approach_lights",
+    "V_Body_Lamp_PosTTSign": "headlights",
+    "V_Body_Lamp_HazSign": "hazard_lights",
+    "V_Body_Lamp_LowBeamOn": "low_beam",
+    "V_Cabn_Door_OpenR1LH": "front_left_door",
+    "V_Cabn_Door_OpenR1RH": "front_right_door",
+    "V_Cabn_Door_OpenR2LH": "rear_left_door",
+    "V_Cabn_Door_OpenR2RH": "rear_right_door",
+    "V_Body_Hood_FrunkOpen": "bonnet",
+    "V_Body_Hood_TrunkOpen": "tailgate",
+}
+
+_LIVE_PRESSURES = {
+    "V_Chas_Axle_TyrePressR1LH": "front_left_tyre",
+    "V_Chas_Axle_TyrePressR1RH": "front_right_tyre",
+    "V_Chas_Axle_TyrePressR2LH": "back_left_tyre",
+    "V_Chas_Axle_TyrePressR2RH": "back_right_tyre",
+}
+
+_LIVE_COMMANDS = {
+    "ac_on": ("V_Cabn_HVAC_ActivAc", False),
+    "approach_lights": ("V_Body_Lamp_ApproachOn", False),
+    "headlights": ("V_Body_Lamp_PosTTSign", False),
+    "hazard_lights": ("V_Body_Lamp_HazSign", False),
+    "locked": ("V_Secu_ACCS_VehLockSt", True),
+}
+
+_LIVE_TYRE_LOW = (
+    "V_Chas_Axle_TyrePressLowR1LH",
+    "V_Chas_Axle_TyrePressLowR1RH",
+    "V_Chas_Axle_TyrePressLowR2LH",
+    "V_Chas_Axle_TyrePressLowR2RH",
+)
+
+
+def _live_signal(payload: dict[str, Any], name: str) -> Any:
+    if name in payload:
+        raw = payload.get(name)
+    else:
+        dynamic = payload.get("dynamicSignals")
+        raw = dynamic.get(name) if isinstance(dynamic, dict) else None
+    if isinstance(raw, dict):
+        return raw.get("value")
+    return raw
+
+
+def _live_flag(payload: dict[str, Any], name: str) -> bool | None:
+    value = _live_signal(payload, name)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.lower() in ("true", "false"):
+        return value.lower() == "true"
+    return None
+
+
+def _live_number(payload: dict[str, Any], name: str) -> float | None:
+    value = _live_signal(payload, name)
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _live_charge_minutes(
+    current: VehicleStatus, payload: dict[str, Any], charging: bool | None
+) -> dict[str, Any]:
+    if charging is False:
+        return {"charge_minutes_remaining": None}
+    hours = _live_number(payload, "V_Batt_HVBt_TtoChngHVHr")
+    minutes = _live_number(payload, "V_Batt_HVBt_TtoChngHVMin")
+    if hours is None and minutes is None:
+        return {}
+    carried = current.charge_minutes_remaining or 0
+    carried_hours, carried_minutes = divmod(int(carried), 60)
+    hour_value = carried_hours if hours is None else int(hours)
+    minute_value = carried_minutes if minutes is None else int(minutes)
+    return {"charge_minutes_remaining": hour_value * 60 + minute_value}
+
+
+def _live_tyre_low(payload: dict[str, Any]) -> bool | None:
+    flags = [_live_flag(payload, name) for name in _LIVE_TYRE_LOW]
+    known = [flag for flag in flags if flag is not None]
+    if not known:
+        return None
+    if any(known):
+        return True
+    if len(known) == len(_LIVE_TYRE_LOW):
+        return False
+    return None
 
 
 def otp_verify_body(

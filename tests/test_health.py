@@ -36,6 +36,9 @@ parse_device_awake = _MODULE.parse_device_awake
 command_progress = _MODULE.command_progress
 service_error = _MODULE.service_error
 retry_wait_seconds = _MODULE.retry_wait_seconds
+apply_lks_snapshot = _MODULE.apply_lks_snapshot
+merge_live_payload = _MODULE.merge_live_payload
+note_live_command = _MODULE.note_live_command
 
 
 class ParseVehicleHealthTests(unittest.TestCase):
@@ -333,6 +336,74 @@ class AirConditioningTests(unittest.TestCase):
         self.assertEqual(retry_wait_seconds(None, 1), 2)
         self.assertEqual(retry_wait_seconds(None, 3), 8)
         self.assertEqual(retry_wait_seconds("500", 1), 120)
+
+
+class LiveSnapshotTests(unittest.TestCase):
+    def test_snapshot_merges_and_keeps_readings_it_does_not_mention(self) -> None:
+        current = parse_vehicle_health(
+            {
+                "results": {
+                    "hvBatterySocPercentage": 40,
+                    "hvChargingState": False,
+                    "vehicleLockState": False,
+                    "vehicleBatteryLevel": 12.4,
+                    "highBeamLampOnFlag": True,
+                }
+            }
+        )
+        updated = apply_lks_snapshot(
+            current,
+            {
+                "V_Batt_HVBt_SoCPercn": {"value": 55},
+                "V_Batt_HVBt_ChargState": {"value": True},
+                "V_Batt_HVBt_TtoChngHVHr": {"value": 1},
+                "V_Batt_HVBt_TtoChngHVMin": {"value": 5},
+                "V_Secu_ACCS_VehLockSt": {"value": True},
+                "V_Cabn_Door_OpenR1LH": {"value": True},
+                "V_Chas_Axle_TyrePressR1LH": {"value": 33},
+                "V_Chas_Axle_TyrePressR2RH": {"value": 0},
+                "V_Cabn_HVAC_ActivAc": {"value": False},
+            },
+        )
+        self.assertEqual(updated.battery_percent, 55)
+        self.assertTrue(updated.charging)
+        self.assertEqual(updated.charge_minutes_remaining, 65)
+        self.assertFalse(updated.locked)
+        self.assertTrue(updated.front_left_door)
+        self.assertEqual(updated.front_left_tyre, 33)
+        self.assertIsNone(updated.back_right_tyre)
+        self.assertFalse(updated.ac_on)
+        self.assertEqual(updated.aux_voltage, 12.4)
+        self.assertTrue(updated.high_beam)
+
+    def test_lock_signal_false_means_locked(self) -> None:
+        status = apply_lks_snapshot(None, {"V_Secu_ACCS_VehLockSt": {"value": False}})
+        self.assertTrue(status.locked)
+
+    def test_stopped_charging_clears_the_timer(self) -> None:
+        current = apply_lks_snapshot(
+            None,
+            {
+                "V_Batt_HVBt_ChargState": {"value": True},
+                "V_Batt_HVBt_TtoChngHVMin": {"value": 12},
+            },
+        )
+        stopped = apply_lks_snapshot(
+            current, {"V_Batt_HVBt_ChargState": {"value": False}}
+        )
+        self.assertFalse(stopped.charging)
+        self.assertIsNone(stopped.charge_minutes_remaining)
+
+    def test_messages_accumulate_and_commands_stick(self) -> None:
+        merged = merge_live_payload(
+            {"V_Batt_HVBt_SoCPercn": {"value": 10}},
+            {"V_Cabn_Door_OpenR2RH": {"value": True}},
+        )
+        merged = note_live_command(merged, "locked", True)
+        status = apply_lks_snapshot(None, merged)
+        self.assertEqual(status.battery_percent, 10)
+        self.assertTrue(status.rear_right_door)
+        self.assertTrue(status.locked)
 
 
 if __name__ == "__main__":
