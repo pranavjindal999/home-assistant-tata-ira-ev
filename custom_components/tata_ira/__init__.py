@@ -31,6 +31,7 @@ PLATFORMS = [
 ]
 
 CARD_PATH = "/tata_ira/tata-ira-card.js"
+ICON_PATH = "/tata_ira/curvv.png"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -42,13 +43,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def _async_register_card(hass: HomeAssistant) -> None:
     """Publish the card file and add it to Lovelace."""
     card = Path(__file__).parent / "www" / "tata-ira-card.js"
+    icon = Path(__file__).parent / "www" / "curvv.png"
     version = json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
     url = f"{CARD_PATH}?v={version}"
     store = hass.data.setdefault(DOMAIN, {})
     if not store.get("card_path"):
         try:
             await hass.http.async_register_static_paths(
-                [StaticPathConfig(CARD_PATH, str(card), False)]
+                [
+                    StaticPathConfig(CARD_PATH, str(card), False),
+                    StaticPathConfig(ICON_PATH, str(icon), False),
+                ]
             )
         except RuntimeError:
             _LOGGER.debug("Dashboard card path is already registered")

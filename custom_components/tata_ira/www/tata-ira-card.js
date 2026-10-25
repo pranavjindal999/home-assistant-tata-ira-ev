@@ -1,6 +1,6 @@
 // Tata iRA.ev dashboard card. One card for every control and sensor on the car.
 
-const MARK = `<svg viewBox="0 12 102 70" aria-hidden="true"><path fill="currentColor" d="M3 64 L10 54 L18 50 L46 48 L54 40 L62 26 L68 18 L74 16 L90 34 L97 50 L99 62 L95 68 L86 64 L80 56 L70 68 L38 68 L30 56 L20 68 L8 68 Z"/><path fill="#bad6e6" d="M56 40 L64 26 L72 20 L84 32 L78 40 Z"/><circle cx="26" cy="66" r="11" fill="currentColor"/><circle cx="78" cy="66" r="11" fill="currentColor"/><circle cx="26" cy="66" r="4.4" fill="#163454"/><circle cx="78" cy="66" r="4.4" fill="#163454"/></svg>`;
+const MARK = `<img src="/tata_ira/curvv.png?v=0.6.9" alt="">`;
 
 const UNIQUE_ROLE = {
   battery: "battery",
@@ -110,16 +110,12 @@ ha-card {
 header { display: flex; align-items: flex-start; gap: 12px; }
 .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .mark {
-  width: 28px;
-  height: 28px;
+  width: 92px;
+  height: 38px;
   flex: none;
-  border-radius: 8px;
-  background: #163454;
-  color: #f4f7fa;
-  display: grid;
-  place-items: center;
+  display: block;
 }
-.mark svg { width: 22px; height: 16px; display: block; }
+.mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .name { font-size: 16px; font-weight: 600; line-height: 1.2; }
 .sub { margin-top: 2px; color: var(--secondary-text-color); font-size: 13px; }
 .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
@@ -335,7 +331,7 @@ button:focus-visible, .stat:focus-visible, .chip:focus-visible, .tyre:focus-visi
   .range-value { font-size: 24px; }
   .map-slot { height: 180px; }
 }
-@container ira (min-width: 680px) {
+@container ira (min-width: 560px) {
   .board {
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
@@ -488,7 +484,7 @@ class TataIraCard extends HTMLElement {
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 3, rows: "auto" };
+    return { columns: 12, min_columns: 4, rows: "auto" };
   }
 
   _signature() {
