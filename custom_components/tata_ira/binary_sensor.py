@@ -121,7 +121,6 @@ _FLAGS = (
     ("bonnet", "Bonnet", BinarySensorDeviceClass.DOOR, "bonnet"),
     ("tailgate", "Tailgate", BinarySensorDeviceClass.DOOR, "tailgate"),
     ("ignition_on", "Ignition", BinarySensorDeviceClass.POWER, "ignition"),
-    ("key_in_car", "Key in car", BinarySensorDeviceClass.PRESENCE, "key"),
     ("high_beam", "High beam", BinarySensorDeviceClass.LIGHT, "high_beam"),
     ("low_beam", "Low beam", BinarySensorDeviceClass.LIGHT, "low_beam"),
 )

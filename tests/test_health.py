@@ -153,7 +153,6 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertTrue(status.front_left_door)
         self.assertFalse(status.bonnet)
         self.assertIsNone(status.rear_left_door)
-        self.assertIsNone(status.key_in_car)
 
     def test_warning_lamp(self) -> None:
         status = parse_vehicle_health(
@@ -180,17 +179,15 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertFalse(details["ignition_on"])
         self.assertNotIn("latitude", details)
 
-    def test_key_and_beams(self) -> None:
+    def test_beams(self) -> None:
         status = parse_vehicle_health(
             {
                 "results": {
-                    "pepsKeyInVehicleFlag": True,
                     "highBeamLampOnFlag": False,
                     "lowBeamLampOnFlag": True,
                 }
             }
         )
-        self.assertTrue(status.key_in_car)
         self.assertFalse(status.high_beam)
         self.assertTrue(status.low_beam)
 

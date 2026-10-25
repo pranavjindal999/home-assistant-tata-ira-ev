@@ -1,5 +1,7 @@
 // Tata iRA.ev dashboard card. One card for every control and sensor on the car.
 
+const MARK = `<svg viewBox="0 12 102 70" aria-hidden="true"><path fill="currentColor" d="M3 64 L10 54 L18 50 L46 48 L54 40 L62 26 L68 18 L74 16 L90 34 L97 50 L99 62 L95 68 L86 64 L80 56 L70 68 L38 68 L30 56 L20 68 L8 68 Z"/><path fill="#bad6e6" d="M56 40 L64 26 L72 20 L84 32 L78 40 Z"/><circle cx="26" cy="66" r="11" fill="currentColor"/><circle cx="78" cy="66" r="11" fill="currentColor"/><circle cx="26" cy="66" r="4.4" fill="#163454"/><circle cx="78" cy="66" r="4.4" fill="#163454"/></svg>`;
+
 const UNIQUE_ROLE = {
   battery: "battery",
   charge_time: "chargeTime",
@@ -26,7 +28,6 @@ const UNIQUE_ROLE = {
   bonnet: "bonnet",
   tailgate: "tailgate",
   ignition: "ignition",
-  key: "key",
   high_beam: "highBeam",
   low_beam: "lowBeam",
   ac: "ac",
@@ -66,7 +67,6 @@ const SLUG_ROLE = {
   bonnet: "bonnet",
   tailgate: "tailgate",
   ignition: "ignition",
-  key_in_car: "key",
   high_beam: "highBeam",
   low_beam: "lowBeam",
   air_conditioning: "ac",
@@ -108,6 +108,18 @@ ha-card {
   min-width: 0;
 }
 header { display: flex; align-items: flex-start; gap: 12px; }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  background: #163454;
+  color: #f4f7fa;
+  display: grid;
+  place-items: center;
+}
+.mark svg { width: 22px; height: 16px; display: block; }
 .name { font-size: 16px; font-weight: 600; line-height: 1.2; }
 .sub { margin-top: 2px; color: var(--secondary-text-color); font-size: 13px; }
 .tools { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
@@ -625,7 +637,7 @@ class TataIraCard extends HTMLElement {
       ? `<button class="icon-btn ${this._busy.has(map.refresh.entity_id) ? "busy" : ""}" data-action="press" data-entity="${esc(map.refresh.entity_id)}" aria-label="Refresh">${icon("mdi:refresh")}</button>`
       : "";
     return `<header>
-      <div><div class="name">${esc(name)}</div><div class="sub">${esc(bits.join(" · ") || "Tata iRA.ev")}</div></div>
+      <div class="who"><span class="mark">${MARK}</span><div><div class="name">${esc(name)}</div><div class="sub">${esc(bits.join(" · ") || "Tata iRA.ev")}</div></div></div>
       <div class="tools">${refresh}<div class="conn">${dot}<span>${esc(label)}</span></div></div>
     </header>`;
   }
@@ -805,7 +817,6 @@ class TataIraCard extends HTMLElement {
       }
     }
     push(map.ignition, "Ignition on", "Ignition off", "on");
-    push(map.key, "Key in car", "Key not in car", "on");
     push(map.highBeam, "High beam on", "High beam off", "on");
     push(map.lowBeam, "Low beam on", "Low beam off", "on");
     push(map.charger, "Charger plugged in", "Charger unplugged", "on");
