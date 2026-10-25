@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
+from aiohttp import web
 from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -31,6 +31,21 @@ PLATFORMS = [
 ]
 
 CARD_PATH = "/tata_ira/tata-ira-card.js"
+_CARD_FILE = Path(__file__).parent / "www" / "tata-ira-card.js"
+
+
+class TataIraCardView(HomeAssistantView):
+    """Serve the dashboard card without letting the browser keep an old copy."""
+
+    url = CARD_PATH
+    name = "api:tata_ira:card"
+    requires_auth = False
+
+    async def get(self, request: web.Request) -> web.FileResponse:
+        """Return the card file that is currently on disk."""
+        response = web.FileResponse(_CARD_FILE)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -41,21 +56,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def _async_register_card(hass: HomeAssistant) -> None:
     """Publish the card file and add it to Lovelace."""
-    card = Path(__file__).parent / "www" / "tata-ira-card.js"
-    version = json.loads((Path(__file__).parent / "manifest.json").read_text())["version"]
-    url = f"{CARD_PATH}?v={version}"
     store = hass.data.setdefault(DOMAIN, {})
     if not store.get("card_path"):
-        try:
-            await hass.http.async_register_static_paths(
-                [StaticPathConfig(CARD_PATH, str(card), False)]
-            )
-        except RuntimeError:
-            _LOGGER.debug("Dashboard card path is already registered")
-        add_extra_js_url(hass, url)
+        hass.http.register_view(TataIraCardView())
+        add_extra_js_url(hass, CARD_PATH)
         store["card_path"] = True
     try:
-        await _async_register_lovelace_resource(hass, url)
+        await _async_register_lovelace_resource(hass, CARD_PATH)
     except Exception:
         _LOGGER.exception("Could not register the Tata iRA.ev dashboard card")
 

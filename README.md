@@ -94,7 +94,7 @@ A switch, the lock, or the horn stays on its current state and shows loading unt
 2. Restart Home Assistant.
 3. Go to **Settings → Devices & services → Add integration** and choose **Tata iRA.ev**.
 
-To update later, update Tata iRA.ev in HACS and restart Home Assistant.
+To update later, update Tata iRA.ev in HACS and reload the browser tab. Restart Home Assistant when the update changes sensors, commands, or the connection to the car. A dashboard-card update does not need a restart.
 
 ### Manual
 
@@ -112,7 +112,7 @@ Each car can be added once.
 
 ## Dashboard
 
-Update to the latest release, restart Home Assistant, and reload the browser tab. Then edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one. On a phone it stays in one column. On a wider dashboard the controls, readings, and the map sit side by side.
+Update to the latest release and reload the browser tab. Then edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one. On a phone it stays in one column. On a wider dashboard the controls, readings, and the map sit side by side.
 
 The same card in YAML is:
 
