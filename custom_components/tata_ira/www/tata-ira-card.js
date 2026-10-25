@@ -252,26 +252,61 @@ h3 {
 }
 .stat .label { font-size: 12px; color: var(--secondary-text-color); }
 .stat .value { font-size: 16px; font-weight: 500; }
-.tyres {
+.car-widget { width: min(100%, 460px); margin: 0 auto; }
+.car-stage {
   display: grid;
-  grid-template-columns: 1fr 36px 1fr;
-  grid-template-areas: "fl spine fr" "bl spine br";
-  gap: 8px;
-  align-items: stretch;
+  grid-template-columns: 72px minmax(0, 1fr) 72px;
+  grid-template-rows: 1fr 1fr;
+  align-items: center;
+  column-gap: 4px;
 }
-.spine {
-  grid-area: spine;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+.car-art { grid-column: 2; grid-row: 1 / span 2; position: relative; }
+.car-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.car-svg .shadow { fill: color-mix(in srgb, var(--primary-text-color) 16%, transparent); }
+.car-svg .body { fill: #9aafd4; }
+.car-svg .cladding { fill: #1b1e24; }
+.car-svg .glass { fill: #243044; }
+.car-svg .panel { fill: #8ea3cb; stroke: #1b2433; stroke-width: 1.25; }
+.car-svg .panel.open { fill: #e35d5d; }
+.car-svg .door { transform-box: fill-box; transition: transform 0.35s ease; }
+.car-svg .door.fl, .car-svg .door.rl { transform-origin: 100% 0%; }
+.car-svg .door.fr, .car-svg .door.rr { transform-origin: 0% 0%; }
+.car-svg .door.fl.open, .car-svg .door.rl.open { transform: rotate(-58deg); }
+.car-svg .door.fr.open, .car-svg .door.rr.open { transform: rotate(58deg); }
+.car-svg .bonnet, .car-svg .tail { transform-box: fill-box; transition: transform 0.35s ease; }
+.car-svg .bonnet { transform-origin: 50% 100%; }
+.car-svg .bonnet.open { transform: translateY(-10px); }
+.car-svg .tail { transform-origin: 50% 0%; }
+.car-svg .tail.open { transform: translateY(12px); }
+.car-svg .wheel { fill: #2a2e36; }
+.car-svg .hub { fill: #d7dee8; }
+.car-svg .wheel.low { fill: #8d2f2f; }
+.car-svg .lamp { fill: #d5dce8; }
+.car-svg .lamp.lit { fill: #ffe08a; }
+.car-svg .lamp.high { fill: #fff7d6; filter: drop-shadow(0 0 5px #ffe08a); }
+.car-svg .port { fill: #2a2e36; }
+.car-svg .port.on { fill: #3dd68c; }
+.reading, .zone {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
-.tyre { border: 0; background: transparent; border-radius: 12px; border: 1px solid var(--divider-color); padding: 8px 10px; text-align: left; }
-.tyre.fl { grid-area: fl; }
-.tyre.fr { grid-area: fr; text-align: right; }
-.tyre.bl { grid-area: bl; }
-.tyre.br { grid-area: br; text-align: right; }
-.tyre .label { font-size: 11px; color: var(--secondary-text-color); }
-.tyre .value { font-size: 16px; font-weight: 500; margin-top: 2px; }
-.tyre.alert { border-color: var(--error-color, #c62828); color: var(--error-color, #c62828); }
+.reading {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+.reading .where { display: block; font-size: 10px; font-weight: 500; color: var(--secondary-text-color); }
+.reading.low { color: var(--error-color, #c62828); }
+.reading.fl { grid-column: 1; grid-row: 1; }
+.reading.fr { grid-column: 3; grid-row: 1; }
+.reading.bl { grid-column: 1; grid-row: 2; }
+.reading.br { grid-column: 3; grid-row: 2; }
+.zone { position: absolute; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 span.chip { cursor: default; }
 .chip {
@@ -315,12 +350,12 @@ span.chip { cursor: default; }
 }
 .busy { opacity: 0.55; }
 .empty { color: var(--secondary-text-color); font-size: 14px; padding: 8px 0; }
-button:focus-visible, .stat:focus-visible, .chip:focus-visible, .tyre:focus-visible {
+button:focus-visible, .stat:focus-visible, .chip:focus-visible, .reading:focus-visible, .zone:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 @media (hover: hover) {
-  .tile:hover, .stat:hover, .chip:hover, .tyre:hover, .icon-btn:hover {
+  .tile:hover, .stat:hover, .chip:hover, .reading:hover, .icon-btn:hover {
     background: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
   }
   .tile.on:hover { background: color-mix(in srgb, var(--primary-color) 22%, transparent); }
@@ -581,13 +616,14 @@ class TataIraCard extends HTMLElement {
     parts.push(this._header(name, map));
     parts.push(this._banner(map));
     parts.push(this._hero(map));
+    parts.push(this._car(map));
     const controls = this._controls(map);
     const stats = this._stats(map);
     const location =
       map.location && !isBlank(map.location)
         ? `<section class="section map-block"><h3>Location</h3><div class="map-slot" data-entity="${esc(map.location.entity_id)}"></div></section>`
         : "";
-    const side = [location, this._tyres(map), this._chips(map)].filter(Boolean).join("");
+    const side = [location, this._chips(map)].filter(Boolean).join("");
     const main = controls ? `<div class="main">${controls}</div>` : "";
     const aside = side ? `<div class="side">${side}</div>` : "";
     parts.push(`<div class="board">${main}${stats}${aside}</div>`);
@@ -765,23 +801,62 @@ class TataIraCard extends HTMLElement {
     return `<section class="section facts"><h3>Car</h3><div class="stats">${buttons}</div></section>`;
   }
 
-  _tyres(map) {
-    const cells = [
-      ["tyreFl", "Front left", "fl"],
-      ["tyreFr", "Front right", "fr"],
-      ["tyreBl", "Back left", "bl"],
-      ["tyreBr", "Back right", "br"],
-    ];
-    if (!cells.some(([role]) => map[role])) return "";
-    const low = isOn(map.tyreLow);
-    const buttons = cells
-      .map(([role, label, place]) => {
-        const state = map[role];
-        if (!state) return `<div class="tyre ${place}"><div class="label">${esc(label)}</div><div class="value">—</div></div>`;
-        return `<button class="tyre ${place} ${low ? "alert" : ""}" data-action="more" data-entity="${esc(state.entity_id)}" aria-label="${esc(label)}"><div class="label">${esc(label)}</div><div class="value">${esc(display(state))}</div></button>`;
-      })
-      .join("");
-    return `<section class="section"><h3>Tyres</h3><div class="tyres">${buttons}<div class="spine"></div></div></section>`;
+  _car(map) {
+    const parts = ["tyreFl", "tyreFr", "tyreBl", "tyreBr", "doorFl", "doorFr", "doorRl", "doorRr", "bonnet", "tailgate"];
+    if (!parts.some((role) => map[role])) return "";
+    const open = (state) => (state && isOn(state) ? "open" : "");
+    const zone = (state, label, style) => {
+      if (!state) return "";
+      return `<button class="zone" style="${style}" data-action="more" data-entity="${esc(state.entity_id)}" aria-label="${esc(label)}"></button>`;
+    };
+    const reading = (role, place, label) => {
+      const state = map[role];
+      const low = isOn(map.tyreLow) ? "low" : "";
+      const value = state && !isBlank(state) ? display(state) : "—";
+      const action = state ? ` data-action="more" data-entity="${esc(state.entity_id)}"` : "";
+      return `<button class="reading ${place} ${low}"${action} aria-label="${esc(label)} tyre pressure"><span class="where">${esc(label)}</span>${esc(value)}</button>`;
+    };
+    const lamps = isOn(map.highBeam) ? "high" : isOn(map.headlights) || isOn(map.lowBeam) ? "lit" : "";
+    const port = isOn(map.charger) ? "on" : "";
+    return `<section class="section car-widget"><h3>Body</h3><div class="car-stage">
+      ${reading("tyreFl", "fl", "Front left")}
+      ${reading("tyreFr", "fr", "Front right")}
+      <div class="car-art">
+        <svg class="car-svg" viewBox="0 0 240 460" aria-hidden="true">
+          <ellipse class="shadow" cx="120" cy="438" rx="86" ry="12"/>
+          <rect class="wheel fl ${isOn(map.tyreLow) ? "low" : ""}" x="16" y="86" width="36" height="64" rx="14"/>
+          <circle class="hub" cx="34" cy="118" r="10"/>
+          <rect class="wheel fr ${isOn(map.tyreLow) ? "low" : ""}" x="188" y="86" width="36" height="64" rx="14"/>
+          <circle class="hub" cx="206" cy="118" r="10"/>
+          <rect class="wheel rl ${isOn(map.tyreLow) ? "low" : ""}" x="16" y="292" width="36" height="64" rx="14"/>
+          <circle class="hub" cx="34" cy="324" r="10"/>
+          <rect class="wheel rr ${isOn(map.tyreLow) ? "low" : ""}" x="188" y="292" width="36" height="64" rx="14"/>
+          <circle class="hub" cx="206" cy="324" r="10"/>
+          <path class="body" d="M120 22c-42 0-64 28-68 64l-6 78-4 108 4 92c6 48 32 78 74 84 42-6 68-36 74-84l4-92-4-108-6-78c-4-36-26-64-68-64z"/>
+          <path class="cladding" d="M58 168c-8 18-12 48-12 86s4 70 12 92c8 6 14 8 18 8V160c-4 0-10 2-18 8zm124 0c8 18 12 48 12 86s-4 70-12 92c-8 6-14 8-18 8V160c4 0 10 2 18 8z"/>
+          <path class="panel bonnet ${open(map.bonnet)}" d="M120 40c-28 2-48 20-54 48l2 36h104l2-36c-6-28-26-46-54-48z"/>
+          <path class="glass" d="M120 132l-34 28-4 86c14 18 62 18 76 0l-4-86z"/>
+          <path class="glass rear" d="M96 268c8 22 40 28 48 10 8 18 40 12 48-10-14 8-34 12-48 12s-34-4-48-12z"/>
+          <rect class="panel door fl ${open(map.doorFl)}" x="46" y="156" width="22" height="78" rx="5"/>
+          <rect class="panel door fr ${open(map.doorFr)}" x="172" y="156" width="22" height="78" rx="5"/>
+          <rect class="panel door rl ${open(map.doorRl)}" x="48" y="242" width="20" height="68" rx="5"/>
+          <rect class="panel door rr ${open(map.doorRr)}" x="172" y="242" width="20" height="68" rx="5"/>
+          <path class="panel tail ${open(map.tailgate)}" d="M78 352c6 28 20 48 42 54 22-6 36-26 42-54-12 6-28 10-42 10s-30-4-42-10z"/>
+          <path class="lamp ${lamps}" d="M62 58c8-8 18-10 26-6-10 8-16 16-16 22-6-4-10-10-10-16z"/>
+          <path class="lamp ${lamps}" d="M178 58c-8-8-18-10-26-6 10 8 16 16 16 22 6-4 10-10 10-16z"/>
+          <circle class="port ${port}" cx="54" cy="132" r="5"/>
+        </svg>
+        ${zone(map.bonnet, "Bonnet", "left:22%;top:8%;width:56%;height:16%")}
+        ${zone(map.doorFl, "Front left door", "left:14%;top:33%;width:16%;height:16%")}
+        ${zone(map.doorFr, "Front right door", "left:70%;top:33%;width:16%;height:16%")}
+        ${zone(map.doorRl, "Rear left door", "left:14%;top:51%;width:16%;height:14%")}
+        ${zone(map.doorRr, "Rear right door", "left:70%;top:51%;width:16%;height:14%")}
+        ${zone(map.tailgate, "Tailgate", "left:24%;top:76%;width:52%;height:14%")}
+        ${zone(map.charger, "Charger", "left:16%;top:26%;width:10%;height:8%")}
+      </div>
+      ${reading("tyreBl", "bl", "Rear left")}
+      ${reading("tyreBr", "br", "Rear right")}
+    </div></section>`;
   }
 
   _chips(map) {
@@ -794,24 +869,6 @@ class TataIraCard extends HTMLElement {
         `<button class="${cls}" data-action="more" data-entity="${esc(state.entity_id)}">${esc(on ? onLabel : offLabel)}</button>`
       );
     };
-    const openings = [
-      [map.doorFl, "Front left open"],
-      [map.doorFr, "Front right open"],
-      [map.doorRl, "Rear left open"],
-      [map.doorRr, "Rear right open"],
-      [map.bonnet, "Bonnet open"],
-      [map.tailgate, "Tailgate open"],
-    ].filter(([state]) => state);
-    const openOnes = openings.filter(([state]) => isOn(state));
-    if (openings.length && !openOnes.length) {
-      chips.push(`<span class="chip">Openings shut</span>`);
-    } else {
-      for (const [state, label] of openOnes) {
-        chips.push(
-          `<button class="chip alert" data-action="more" data-entity="${esc(state.entity_id)}">${esc(label)}</button>`
-        );
-      }
-    }
     push(map.ignition, "Ignition on", "Ignition off", "on");
     push(map.highBeam, "High beam on", "High beam off", "on");
     push(map.lowBeam, "Low beam on", "Low beam off", "on");
