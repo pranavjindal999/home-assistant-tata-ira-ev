@@ -1,6 +1,6 @@
 // Tata iRA.ev dashboard card. One card for every control and sensor on the car.
 
-const MARK = `<img src="/tata_ira/curvv.png?v=0.6.9" alt="">`;
+const MARK = `<img src="/tata_ira/curvv.png?v=0.7.1" alt="">`;
 
 const UNIQUE_ROLE = {
   battery: "battery",
@@ -252,16 +252,16 @@ h3 {
 }
 .stat .label { font-size: 12px; color: var(--secondary-text-color); }
 .stat .value { font-size: 16px; font-weight: 500; }
-.car-widget { width: min(100%, 460px); margin: 0 auto; }
+.car-widget { width: min(100%, 420px); margin: 0 auto; }
 .car-stage {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 72px;
-  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 68px minmax(0, 1fr) 68px;
+  grid-template-rows: auto auto;
   align-items: center;
   column-gap: 4px;
 }
-.car-art { grid-column: 2; grid-row: 1 / span 2; position: relative; }
-.car-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.car-art { grid-column: 2; grid-row: 1 / span 2; position: relative; min-width: 0; }
+.car-svg { width: 100%; height: auto; display: block; aspect-ratio: 240 / 460; }
 .car-svg .shadow { fill: color-mix(in srgb, var(--primary-text-color) 16%, transparent); }
 .car-svg .body { fill: #9aafd4; }
 .car-svg .cladding { fill: #1b1e24; }
@@ -283,7 +283,7 @@ h3 {
 .car-svg .wheel.low { fill: #8d2f2f; }
 .car-svg .lamp { fill: #d5dce8; }
 .car-svg .lamp.lit { fill: #ffe08a; }
-.car-svg .lamp.high { fill: #fff7d6; filter: drop-shadow(0 0 5px #ffe08a); }
+.car-svg .lamp.high { fill: #fff7d6; }
 .car-svg .port { fill: #2a2e36; }
 .car-svg .port.on { fill: #3dd68c; }
 .reading, .zone {
@@ -299,6 +299,7 @@ h3 {
   font-weight: 600;
   line-height: 1.25;
   text-align: center;
+  min-width: 0;
 }
 .reading .where { display: block; font-size: 10px; font-weight: 500; color: var(--secondary-text-color); }
 .reading.low { color: var(--error-color, #c62828); }
@@ -402,7 +403,7 @@ function esc(value) {
 }
 
 function roleForUnique(vehicleId, uniqueId) {
-  if (!vehicleId || !uniqueId) return null;
+  if (!vehicleId || typeof uniqueId !== "string") return null;
   const prefix = `${vehicleId}_`;
   if (!uniqueId.startsWith(prefix)) return null;
   return UNIQUE_ROLE[uniqueId.slice(prefix.length)] || null;
@@ -438,13 +439,32 @@ function splitValue(state) {
   };
 }
 
+function identifiersOf(device) {
+  try {
+    const ids = device && device.identifiers;
+    if (!ids) return [];
+    const list = Array.isArray(ids)
+      ? ids
+      : typeof ids !== "string" && typeof ids[Symbol.iterator] === "function"
+        ? Array.from(ids)
+        : [];
+    return list.filter((id) => Array.isArray(id));
+  } catch (_err) {
+    return [];
+  }
+}
+
 function devicesFrom(hass, cached) {
   const source = hass.devices ? Object.values(hass.devices) : cached || [];
-  return source.filter(
-    (device) =>
-      (device.identifiers || []).some((id) => id[0] === "tata_ira") ||
-      (device.manufacturer === "Tata Motors" && device.model === "iRA.ev")
-  );
+  return source.filter((device) => {
+    try {
+      if (!device || typeof device !== "object") return false;
+      const match = identifiersOf(device).some((id) => id[0] === "tata_ira");
+      return match || (device.manufacturer === "Tata Motors" && device.model === "iRA.ev");
+    } catch (_err) {
+      return false;
+    }
+  });
 }
 
 function entriesFrom(hass, registry) {
@@ -454,11 +474,12 @@ function entriesFrom(hass, registry) {
 }
 
 function indexCar(device, entries, states) {
-  const ident = (device.identifiers || []).find((id) => id[0] === "tata_ira");
+  const ident = identifiersOf(device).find((id) => Array.isArray(id) && id[0] === "tata_ira");
   const vehicleId = ident ? ident[1] : null;
   const ranked = [];
-  for (const entry of entries) {
-    if (entry.device_id !== device.id) continue;
+  const list = Array.isArray(entries) ? entries : [];
+  for (const entry of list) {
+    if (!entry || entry.device_id !== device.id) continue;
     if (entry.disabled_by || entry.hidden_by) continue;
     const exact = roleForUnique(vehicleId, entry.unique_id);
     const role = exact || roleForEntityId(entry.entity_id);
@@ -491,7 +512,7 @@ class TataIraCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config || Array.isArray(config)) {
+    if (!config || Array.isArray(config) || typeof config !== "object") {
       throw new Error("Invalid card configuration");
     }
     this._config = config;
@@ -502,15 +523,21 @@ class TataIraCard extends HTMLElement {
     this._hass = hass;
     try {
       const signature = this._signature();
-      if (signature === this._signatureValue) return;
-      this._signatureValue = signature;
-      this._render();
+      if (signature !== this._signatureValue) {
+        this._signatureValue = signature;
+        this._render();
+      }
     } catch (err) {
       console.error("Tata iRA.ev card", err);
+      this._showFailure();
     }
     if (!this._registryRequested) {
       this._registryRequested = true;
-      this._loadRegistry();
+      try {
+        this._loadRegistry();
+      } catch (err) {
+        console.error("Tata iRA.ev card", err);
+      }
     }
   }
 
@@ -570,6 +597,32 @@ class TataIraCard extends HTMLElement {
   }
 
   _render() {
+    try {
+      this._renderBody();
+    } catch (err) {
+      console.error("Tata iRA.ev card", err);
+      this._showFailure();
+    }
+  }
+
+  _showFailure() {
+    try {
+      const root = this.shadowRoot;
+      if (!root) return;
+      let body = root.getElementById("body");
+      if (!body) {
+        root.innerHTML = `<div id="body"></div>`;
+        body = root.getElementById("body");
+      }
+      if (!body.querySelector("ha-card")) {
+        body.innerHTML = `<ha-card><div class="wrap"><p class="empty">The Tata iRA.ev card hit an error. Reload the page.</p></div></ha-card>`;
+      }
+    } catch (_err) {
+      /* Leave the last good render in place. */
+    }
+  }
+
+  _renderBody() {
     if (!this.shadowRoot.querySelector("#body")) {
       this.shadowRoot.innerHTML = `<style>${STYLE}</style><div id="body"></div>`;
       this.shadowRoot.getElementById("body").addEventListener("click", (event) => {
@@ -597,6 +650,7 @@ class TataIraCard extends HTMLElement {
     const entries = entriesFrom(this._hass, this._registry);
     const map = indexCar(device, entries, this._hass.states);
     body.innerHTML = `<ha-card><div class="wrap">${this._html(device, devices, map)}</div></ha-card>`;
+    this._mountCar(map);
     this._mountMap();
   }
 
@@ -616,7 +670,7 @@ class TataIraCard extends HTMLElement {
     parts.push(this._header(name, map));
     parts.push(this._banner(map));
     parts.push(this._hero(map));
-    parts.push(this._car(map));
+    parts.push(`<div class="car-slot"></div>`);
     const controls = this._controls(map);
     const stats = this._stats(map);
     const location =
@@ -628,6 +682,17 @@ class TataIraCard extends HTMLElement {
     const aside = side ? `<div class="side">${side}</div>` : "";
     parts.push(`<div class="board">${main}${stats}${aside}</div>`);
     return parts.filter(Boolean).join("");
+  }
+
+  _mountCar(map) {
+    const slot = this.shadowRoot.querySelector(".car-slot");
+    if (!slot) return;
+    try {
+      slot.innerHTML = this._car(map);
+    } catch (err) {
+      console.error("Tata iRA.ev card", err);
+      slot.replaceChildren();
+    }
   }
 
   _mountMap() {
@@ -807,14 +872,14 @@ class TataIraCard extends HTMLElement {
     const open = (state) => (state && isOn(state) ? "open" : "");
     const zone = (state, label, style) => {
       if (!state) return "";
-      return `<button class="zone" style="${style}" data-action="more" data-entity="${esc(state.entity_id)}" aria-label="${esc(label)}"></button>`;
+      return `<button type="button" class="zone" style="${style}" data-action="more" data-entity="${esc(state.entity_id)}" aria-label="${esc(label)}"></button>`;
     };
     const reading = (role, place, label) => {
       const state = map[role];
       const low = isOn(map.tyreLow) ? "low" : "";
       const value = state && !isBlank(state) ? display(state) : "—";
       const action = state ? ` data-action="more" data-entity="${esc(state.entity_id)}"` : "";
-      return `<button class="reading ${place} ${low}"${action} aria-label="${esc(label)} tyre pressure"><span class="where">${esc(label)}</span>${esc(value)}</button>`;
+      return `<button type="button" class="reading ${place} ${low}"${action} aria-label="${esc(label)} tyre pressure"><span class="where">${esc(label)}</span>${esc(value)}</button>`;
     };
     const lamps = isOn(map.highBeam) ? "high" : isOn(map.headlights) || isOn(map.lowBeam) ? "lit" : "";
     const port = isOn(map.charger) ? "on" : "";
