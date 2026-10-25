@@ -116,7 +116,13 @@ Each car can be added once.
 
 ## Dashboard
 
-After a restart, edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one.
+Update to the latest release, restart Home Assistant, and reload the browser tab. Then edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one.
+
+The same card in YAML is:
+
+```yaml
+type: custom:tata-ira-card
+```
 
 With more than one car, pick the car on the card, or set any entity from that car:
 
