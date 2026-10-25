@@ -84,7 +84,7 @@ Each light switch shows the state the car reports, and sends the matching comman
 
 **Connected** is on while the car’s command link is awake. Home Assistant opens that link when it starts and checks it every couple of minutes, so a command hours later does not have to wake the car first.
 
-A rate limit or a short outage does not turn Connected off. Home Assistant retries those requests. Connected turns off when the car itself reports that the link is down, and Home Assistant tries again within a few seconds.
+A rate limit, a short outage, or a slow wake does not turn Connected off. The car’s link falls asleep after a few minutes, and Home Assistant wakes it again before that shows up as disconnected. Connected turns off only when the car still does not answer after that wake.
 
 ### While a command runs
 

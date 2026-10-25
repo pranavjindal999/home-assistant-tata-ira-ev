@@ -132,11 +132,10 @@ class IraClient:
             raise IraError("iRA.ev did not return a command id")
         if connected is True:
             awake = await self._async_read_awake(access_token, trace_id)
-            if awake is True:
+            if awake is not False:
                 self.link_connected = True
-                return True, rotated
-            if awake is None:
-                self.link_connected = True
+                # A command log does not reset the car's sleep timer. A wake does.
+                await self._async_nudge(access_token, trace_id)
                 return True, rotated
         await self._async_wake(access_token, trace_id)
         return True, rotated
@@ -353,8 +352,53 @@ class IraClient:
             if parse_device_awake(status) is True:
                 self.link_connected = True
                 return
+        # The car often answers a few seconds after this trace stops updating.
+        try:
+            if await self._async_probe_link(access_token):
+                self.link_connected = True
+                return
+        except IraAuthError:
+            raise
+        except IraError:
+            _LOGGER.debug("Follow-up link check failed")
         self.link_connected = False
         raise IraError("The car is not connected")
+
+    async def _async_nudge(self, access_token: str, trace_id: str) -> None:
+        """Ask the car to stay awake. A rejected ping does not drop the link."""
+        try:
+            await self._async_request(
+                "GET",
+                WAKE_PATH,
+                headers=self._trace_headers(access_token, trace_id),
+            )
+        except IraAuthError:
+            raise
+        except IraError:
+            _LOGGER.debug("Keep-awake ping was not accepted")
+
+    async def _async_probe_link(self, access_token: str) -> bool:
+        """Read a fresh command log. True when the link is up."""
+        logged = await self._async_request(
+            "POST",
+            COMMAND_LOG_PATH,
+            json_body=command_log_body(
+                self._vehicle_id,
+                "LockVehicleCommand",
+                datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            ),
+            headers={
+                **self._vehicle_headers(access_token),
+                "Accept": "application/json",
+                "Cache-Control": "no-cache, no-store",
+                "X-Request-ID": str(uuid4()),
+            },
+        )
+        self._raise_service_error(logged)
+        trace_id, connected = parse_command_log(logged)
+        if not trace_id or connected is False:
+            return False
+        return await self._async_read_awake(access_token, trace_id) is not False
 
     async def _async_wait_for_command(
         self, access_token: str, result: dict[str, Any]
