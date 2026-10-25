@@ -129,11 +129,8 @@ class ParseVehicleHealthTests(unittest.TestCase):
             {
                 "results": {
                     "distanceToEmpty": 59,
-                    "hvBattTemp": 31,
-                    "hvBattKWh": 5,
                     "hvBatterySohPercentage": 0,
                     "vehicleBatteryLevel": 13.7,
-                    "tcuBatteryLevelPercentage": 93,
                     "nextServiceDueDays": 73,
                     "nextServiceDueKm": 3199,
                     "hvChargerConnectFlag": False,
@@ -147,10 +144,7 @@ class ParseVehicleHealthTests(unittest.TestCase):
             }
         )
         self.assertEqual(status.range_km, 59)
-        self.assertEqual(status.battery_temperature, 31)
-        self.assertEqual(status.battery_energy_kwh, 5)
         self.assertEqual(status.aux_voltage, 13.7)
-        self.assertEqual(status.telematics_battery, 93)
         self.assertEqual(status.service_days, 73)
         self.assertEqual(status.service_km, 3199)
         self.assertFalse(status.charger_connected)
@@ -161,11 +155,10 @@ class ParseVehicleHealthTests(unittest.TestCase):
         self.assertIsNone(status.rear_left_door)
         self.assertIsNone(status.key_in_car)
 
-    def test_zero_energy_and_a_warning_lamp(self) -> None:
+    def test_warning_lamp(self) -> None:
         status = parse_vehicle_health(
-            {"results": {"hvBattKWh": 0, "milLampOnFlag": True, "eVSystemWarning": 0}}
+            {"results": {"milLampOnFlag": True, "eVSystemWarning": 0}}
         )
-        self.assertIsNone(status.battery_energy_kwh)
         self.assertTrue(status.car_warning)
 
     def test_vehicle_state_details(self) -> None:
@@ -174,7 +167,6 @@ class ParseVehicleHealthTests(unittest.TestCase):
                 "results": {
                     "airConditionOn": True,
                     "odometerInMeters": "23144317",
-                    "vehicleInteriorTemperature": 29.0,
                     "speed": 0,
                     "ignitionOn": False,
                     "gpsLatitude": 0,
@@ -184,7 +176,6 @@ class ParseVehicleHealthTests(unittest.TestCase):
         )
         self.assertTrue(details["ac_on"])
         self.assertEqual(details["odometer_km"], 23144.3)
-        self.assertEqual(details["interior_temperature"], 29.0)
         self.assertEqual(details["speed_kmh"], 0)
         self.assertFalse(details["ignition_on"])
         self.assertNotIn("latitude", details)

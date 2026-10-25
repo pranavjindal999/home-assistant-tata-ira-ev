@@ -38,17 +38,13 @@ These come from the same status the app already downloads. Several of them are n
 
 - **Range** is the remaining distance.
 - **Odometer** is the total distance.
-- **Battery temperature** is the high-voltage battery temperature.
-- **Battery energy** is the remaining energy, in kWh. A zero reading is left empty.
-- **Interior temperature** is the cabin temperature.
 - **12V battery** is the auxiliary battery voltage. **12V battery low** is on when the car reports that battery as low.
-- **Telematics battery** is the percentage of the car’s connected-car battery, separate from the high-voltage battery.
 - **Service due** is the days until the next service. **Service distance** is the kilometres until that service.
 - **Speed** is the speed from the latest status.
 - **Charger connected** is on when a charger is plugged in, including before charging starts.
 - **Warning** is on when the car reports a fault lamp, such as the check-engine, ABS, airbag, high battery temperature, motor, or transmission warning.
 - **Front left door**, **Front right door**, **Rear left door**, **Rear right door**, **Bonnet**, and **Tailgate** are on while that opening is open.
-- **Location** is where the car last reported it is.
+- **Location** is a map of where the car last reported it is.
 - **Ignition** is on while the car is switched on.
 - **Key in car** is on when the key is inside the car.
 - **High beam** and **Low beam** are the beam telltales. They are separate from the **Headlights** switch, which controls the position lamps.
@@ -116,7 +112,7 @@ Each car can be added once.
 
 ## Dashboard
 
-Update to the latest release, restart Home Assistant, and reload the browser tab. Then edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one.
+Update to the latest release, restart Home Assistant, and reload the browser tab. Then edit a dashboard, add a card, and choose **Tata iRA.ev**. The card finds the car. You do not add the lock, the lights, or the sensors one by one. On a phone it stays in one column. On a wider dashboard the controls, readings, and the map sit side by side.
 
 The same card in YAML is:
 
@@ -147,12 +143,8 @@ Default entity IDs use the device name Tata iRA.ev. If you rename the device, Ho
 | `binary_sensor.tata_ira_ev_tyre_pressure` | On when any tyre pressure is low |
 | `sensor.tata_ira_ev_range` | Remaining range |
 | `sensor.tata_ira_ev_odometer` | Odometer |
-| `sensor.tata_ira_ev_battery_temperature` | High-voltage battery temperature |
-| `sensor.tata_ira_ev_battery_energy` | Remaining battery energy |
-| `sensor.tata_ira_ev_interior_temperature` | Cabin temperature |
 | `sensor.tata_ira_ev_12v_battery` | 12V battery voltage |
 | `binary_sensor.tata_ira_ev_12v_battery_low` | On when the 12V battery is low |
-| `sensor.tata_ira_ev_telematics_battery` | Telematics battery percentage |
 | `sensor.tata_ira_ev_service_due` | Days until the next service |
 | `sensor.tata_ira_ev_service_distance` | Kilometres until the next service |
 | `sensor.tata_ira_ev_speed` | Speed from the latest status |
@@ -164,7 +156,7 @@ Default entity IDs use the device name Tata iRA.ev. If you rename the device, Ho
 | `binary_sensor.tata_ira_ev_rear_right_door` | On while the rear right door is open |
 | `binary_sensor.tata_ira_ev_bonnet` | On while the bonnet is open |
 | `binary_sensor.tata_ira_ev_tailgate` | On while the tailgate is open |
-| `device_tracker.tata_ira_ev_location` | Last reported location |
+| `device_tracker.tata_ira_ev_location` | Map of the last reported location |
 | `binary_sensor.tata_ira_ev_ignition` | On while the car is switched on |
 | `binary_sensor.tata_ira_ev_key_in_car` | On when the key is inside the car |
 | `binary_sensor.tata_ira_ev_high_beam` | On while the high beam is on |

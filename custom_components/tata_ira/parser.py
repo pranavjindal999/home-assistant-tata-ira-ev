@@ -44,10 +44,7 @@ class VehicleStatus:
     back_right_tyre: float | None = None
     tyre_pressure_low: bool | None = None
     range_km: float | None = None
-    battery_temperature: float | None = None
-    battery_energy_kwh: float | None = None
     aux_voltage: float | None = None
-    telematics_battery: float | None = None
     service_days: float | None = None
     service_km: float | None = None
     charger_connected: bool | None = None
@@ -60,7 +57,6 @@ class VehicleStatus:
     bonnet: bool | None = None
     tailgate: bool | None = None
     odometer_km: float | None = None
-    interior_temperature: float | None = None
     speed_kmh: float | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -97,10 +93,7 @@ def parse_vehicle_health(payload: dict[str, Any]) -> VehicleStatus:
         back_right_tyre=_optional_pressure(results, "rearRightWheelTyrePressure"),
         tyre_pressure_low=_tyre_pressure_low(results),
         range_km=_optional_number(results, "distanceToEmpty"),
-        battery_temperature=_optional_number(results, "hvBattTemp"),
-        battery_energy_kwh=_positive_number(results, "hvBattKWh"),
         aux_voltage=_positive_number(results, "vehicleBatteryLevel"),
-        telematics_battery=_optional_number(results, "tcuBatteryLevelPercentage"),
         service_days=_optional_number(results, "nextServiceDueDays"),
         service_km=_optional_number(results, "nextServiceDueKm"),
         charger_connected=_optional_bool(results, "hvChargerConnectFlag"),
@@ -204,7 +197,7 @@ def _optional_bool(results: dict[str, Any], key: str) -> bool | None:
 
 
 def parse_vehicle_details(payload: dict[str, Any]) -> dict[str, Any]:
-    """Read odometer, cabin temperature, speed, and location from vehicle state."""
+    """Read odometer, speed, and location from vehicle state."""
     results = payload.get("results") or {}
     details: dict[str, Any] = {}
     ac_on = parse_air_conditioning(payload)
@@ -213,9 +206,6 @@ def parse_vehicle_details(payload: dict[str, Any]) -> dict[str, Any]:
     odometer = _optional_number(results, "odometerInMeters")
     if odometer is not None and odometer > 0:
         details["odometer_km"] = round(odometer / 1000, 1)
-    interior = _optional_number(results, "vehicleInteriorTemperature")
-    if interior is not None:
-        details["interior_temperature"] = interior
     speed = _optional_number(results, "speed")
     if speed is not None:
         details["speed_kmh"] = speed

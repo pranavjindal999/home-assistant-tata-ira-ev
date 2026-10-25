@@ -14,7 +14,6 @@ from homeassistant.const import (
     UnitOfLength,
     UnitOfPressure,
     UnitOfSpeed,
-    UnitOfTemperature,
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
@@ -152,30 +151,6 @@ _READINGS = (
         "icon": "mdi:counter",
     },
     {
-        "key": "battery_temperature",
-        "name": "Battery temperature",
-        "unique_id_suffix": "battery_temperature",
-        "device_class": SensorDeviceClass.TEMPERATURE,
-        "unit": UnitOfTemperature.CELSIUS,
-        "precision": 0,
-    },
-    {
-        "key": "interior_temperature",
-        "name": "Interior temperature",
-        "unique_id_suffix": "interior_temperature",
-        "device_class": SensorDeviceClass.TEMPERATURE,
-        "unit": UnitOfTemperature.CELSIUS,
-        "precision": 1,
-    },
-    {
-        "key": "battery_energy_kwh",
-        "name": "Battery energy",
-        "unique_id_suffix": "battery_energy",
-        "unit": "kWh",
-        "precision": 1,
-        "icon": "mdi:battery",
-    },
-    {
         "key": "aux_voltage",
         "name": "12V battery",
         "unique_id_suffix": "aux_battery",
@@ -183,14 +158,6 @@ _READINGS = (
         "unit": UnitOfElectricPotential.VOLT,
         "precision": 1,
         "icon": "mdi:car-battery",
-    },
-    {
-        "key": "telematics_battery",
-        "name": "Telematics battery",
-        "unique_id_suffix": "telematics_battery",
-        "device_class": SensorDeviceClass.BATTERY,
-        "unit": PERCENTAGE,
-        "precision": 0,
     },
     {
         "key": "service_days",

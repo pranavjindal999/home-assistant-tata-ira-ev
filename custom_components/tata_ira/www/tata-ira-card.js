@@ -12,11 +12,7 @@ const UNIQUE_ROLE = {
   tyre_pressure: "tyreLow",
   range: "range",
   odometer: "odometer",
-  battery_temperature: "batteryTemp",
-  interior_temperature: "interior",
-  battery_energy: "energy",
   aux_battery: "aux",
-  telematics_battery: "telematics",
   service_due: "serviceDays",
   service_distance: "serviceKm",
   speed: "speed",
@@ -56,11 +52,7 @@ const SLUG_ROLE = {
   tyre_pressure: "tyreLow",
   range: "range",
   odometer: "odometer",
-  battery_temperature: "batteryTemp",
-  interior_temperature: "interior",
-  battery_energy: "energy",
   "12v_battery": "aux",
-  telematics_battery: "telematics",
   service_due: "serviceDays",
   service_distance: "serviceKm",
   speed: "speed",
@@ -92,13 +84,28 @@ const SLUGS = Object.entries(SLUG_ROLE).sort((a, b) => b[0].length - a[0].length
 
 const STYLE = `
 :host { display: block; }
-ha-card { display: block; }
+ha-card {
+  display: block;
+  container-type: inline-size;
+  container-name: ira;
+}
 .wrap {
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   color: var(--primary-text-color);
+}
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.main, .side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 header { display: flex; align-items: flex-start; gap: 12px; }
 .name { font-size: 16px; font-weight: 600; line-height: 1.2; }
@@ -163,7 +170,10 @@ header { display: flex; align-items: flex-start; gap: 12px; }
   gap: 4px;
   font-size: 12px;
   line-height: 1.2;
+  text-align: center;
+  min-width: 0;
 }
+.tile span { max-width: 100%; }
 .tile.on {
   background: color-mix(in srgb, var(--primary-color) 16%, transparent);
   border-color: color-mix(in srgb, var(--primary-color) 42%, var(--divider-color));
@@ -273,17 +283,18 @@ span.chip { cursor: default; }
   border-color: transparent;
   color: var(--error-color, #c62828);
 }
-.location {
-  width: 100%;
-  border-radius: 12px;
+.map-slot {
+  height: 220px;
+  border-radius: 14px;
+  overflow: hidden;
   border: 1px solid var(--divider-color);
-  background: transparent;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 14px;
+  background: color-mix(in srgb, var(--primary-text-color) 4%, transparent);
+}
+.map-slot ha-map,
+.map {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .choose {
   width: 100%;
@@ -299,10 +310,41 @@ button:focus-visible, .stat:focus-visible, .chip:focus-visible, .tyre:focus-visi
   outline-offset: 2px;
 }
 @media (hover: hover) {
-  .tile:hover, .stat:hover, .chip:hover, .tyre:hover, .location:hover, .icon-btn:hover {
+  .tile:hover, .stat:hover, .chip:hover, .tyre:hover, .icon-btn:hover {
     background: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
   }
   .tile.on:hover { background: color-mix(in srgb, var(--primary-color) 22%, transparent); }
+}
+@container ira (max-width: 340px) {
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .soc-value { font-size: 36px; }
+  .range-value { font-size: 24px; }
+  .map-slot { height: 180px; }
+}
+@container ira (min-width: 680px) {
+  .board {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
+    gap: 16px 28px;
+    align-items: start;
+  }
+  .main { grid-column: 1; grid-row: 1; }
+  .side { grid-column: 2; grid-row: 1 / span 2; }
+  .facts { grid-column: 1; grid-row: 2; }
+  .map-slot { height: 280px; }
+}
+@container ira (min-width: 1040px) {
+  .board {
+    grid-template-columns: minmax(260px, 0.95fr) minmax(280px, 1.15fr) minmax(250px, 0.9fr);
+  }
+  .main { grid-column: 1; grid-row: 1; }
+  .facts { grid-column: 2; grid-row: 1; }
+  .side { grid-column: 3; grid-row: 1; }
+  .facts .stats { grid-template-columns: 1fr 1fr; }
+  .board:not(:has(.facts)) { grid-template-columns: minmax(0, 1.1fr) minmax(250px, 0.9fr); }
+  .board:not(:has(.facts)) .side { grid-column: 2; }
+  .board:not(:has(.side)) { grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr); }
+  .board:not(:has(.side)) .facts { grid-column: 2; }
 }
 `;
 
@@ -428,7 +470,7 @@ class TataIraCard extends HTMLElement {
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 6, rows: "auto" };
+    return { columns: 12, min_columns: 3, rows: "auto" };
   }
 
   _signature() {
@@ -498,6 +540,7 @@ class TataIraCard extends HTMLElement {
     }
     const body = this.shadowRoot.getElementById("body");
     const devices = this._hass ? devicesFrom(this._hass, this._devices) : [];
+    if (this._mapEl?.isConnected) this._mapEl.remove();
     if (!devices.length) {
       body.innerHTML = `<ha-card><div class="wrap"><p class="empty">Add the Tata iRA.ev integration, then this card fills in from the car.</p></div></ha-card>`;
       return;
@@ -506,6 +549,7 @@ class TataIraCard extends HTMLElement {
     const entries = entriesFrom(this._hass, this._registry);
     const map = indexCar(device, entries, this._hass.states);
     body.innerHTML = `<ha-card><div class="wrap">${this._html(device, devices, map)}</div></ha-card>`;
+    this._mountMap();
   }
 
   _html(device, devices, map) {
@@ -524,16 +568,45 @@ class TataIraCard extends HTMLElement {
     parts.push(this._header(name, map));
     parts.push(this._banner(map));
     parts.push(this._hero(map));
-    parts.push(this._controls(map));
-    parts.push(this._stats(map));
-    parts.push(this._tyres(map));
-    parts.push(this._chips(map));
-    if (map.location) {
-      parts.push(
-        `<button class="location" data-action="more" data-entity="${esc(map.location.entity_id)}">${icon("mdi:map-marker")}<span>Location</span></button>`
-      );
-    }
+    const controls = this._controls(map);
+    const stats = this._stats(map);
+    const location =
+      map.location && !isBlank(map.location)
+        ? `<section class="section map-block"><h3>Location</h3><div class="map-slot" data-entity="${esc(map.location.entity_id)}"></div></section>`
+        : "";
+    const side = [location, this._tyres(map), this._chips(map)].filter(Boolean).join("");
+    const main = controls ? `<div class="main">${controls}</div>` : "";
+    const aside = side ? `<div class="side">${side}</div>` : "";
+    parts.push(`<div class="board">${main}${stats}${aside}</div>`);
     return parts.filter(Boolean).join("");
+  }
+
+  _mountMap() {
+    const slot = this.shadowRoot.querySelector(".map-slot");
+    if (!slot) {
+      if (this._mapEl) {
+        this._mapEl.remove();
+        this._mapEl = null;
+        this._mapEntity = null;
+      }
+      return;
+    }
+    const entityId = slot.dataset.entity;
+    if (!this._mapEl || this._mapEntity !== entityId) {
+      const element = document.createElement("ha-map");
+      element.className = "map";
+      element.autoFit = true;
+      element.zoom = 15;
+      element.entities = [entityId];
+      this._mapEl = element;
+      this._mapEntity = entityId;
+    }
+    this._mapEl.hass = this._hass;
+    if (this._hass.themes) {
+      this._mapEl.themeMode = this._hass.themes.darkMode ? "dark" : "light";
+    }
+    slot.replaceChildren(this._mapEl);
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
   }
 
   _header(name, map) {
@@ -663,25 +736,21 @@ class TataIraCard extends HTMLElement {
 
   _stats(map) {
     const rows = [
-      ["interior", "Interior"],
-      ["batteryTemp", "Battery temp"],
-      ["energy", "Energy"],
       ["aux", "12V battery"],
-      ["telematics", "Telematics"],
       ["odometer", "Odometer"],
       ["speed", "Speed"],
       ["serviceDays", "Service due"],
       ["serviceKm", "Service distance"],
     ];
     const buttons = rows
-      .filter(([role]) => map[role])
+      .filter(([role]) => map[role] && !isBlank(map[role]))
       .map(([role, label]) => {
         const state = map[role];
         return `<button class="stat" data-action="more" data-entity="${esc(state.entity_id)}"><span class="label">${esc(label)}</span><span class="value">${esc(display(state))}</span></button>`;
       })
       .join("");
     if (!buttons) return "";
-    return `<section class="section"><h3>Car</h3><div class="stats">${buttons}</div></section>`;
+    return `<section class="section facts"><h3>Car</h3><div class="stats">${buttons}</div></section>`;
   }
 
   _tyres(map) {
