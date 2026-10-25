@@ -84,11 +84,11 @@ const SLUGS = Object.entries(SLUG_ROLE).sort((a, b) => b[0].length - a[0].length
 
 const STYLE = `
 :host { display: block; }
-ha-card {
-  display: block;
-  container-type: inline-size;
-  container-name: ira;
-}
+ha-card { display: block; }
+#main:empty,
+#facts:empty,
+#side-rest:empty { display: none; }
+#map-block[hidden] { display: none; }
 .wrap {
   padding: 16px;
   display: flex;
@@ -315,36 +315,40 @@ button:focus-visible, .stat:focus-visible, .chip:focus-visible, .tyre:focus-visi
   }
   .tile.on:hover { background: color-mix(in srgb, var(--primary-color) 22%, transparent); }
 }
-@container ira (max-width: 340px) {
-  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .soc-value { font-size: 36px; }
-  .range-value { font-size: 24px; }
-  .map-slot { height: 180px; }
+:host([data-layout="tiny"]) .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:host([data-layout="tiny"]) .soc-value { font-size: 36px; }
+:host([data-layout="tiny"]) .range-value { font-size: 24px; }
+:host([data-layout="tiny"]) .map-slot { height: 180px; }
+:host([data-layout="medium"]) .board,
+:host([data-layout="wide"]) .board {
+  display: grid;
+  gap: 16px 28px;
+  align-items: start;
 }
-@container ira (min-width: 680px) {
-  .board {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
-    gap: 16px 28px;
-    align-items: start;
-  }
-  .main { grid-column: 1; grid-row: 1; }
-  .side { grid-column: 2; grid-row: 1 / span 2; }
-  .facts { grid-column: 1; grid-row: 2; }
-  .map-slot { height: 280px; }
+:host([data-layout="medium"]) .board {
+  grid-template-columns: minmax(0, 1.15fr) minmax(240px, 0.85fr);
 }
-@container ira (min-width: 1040px) {
-  .board {
-    grid-template-columns: minmax(260px, 0.95fr) minmax(280px, 1.15fr) minmax(250px, 0.9fr);
-  }
-  .main { grid-column: 1; grid-row: 1; }
-  .facts { grid-column: 2; grid-row: 1; }
-  .side { grid-column: 3; grid-row: 1; }
-  .facts .stats { grid-template-columns: 1fr 1fr; }
-  .board:not(:has(.facts)) { grid-template-columns: minmax(0, 1.1fr) minmax(250px, 0.9fr); }
-  .board:not(:has(.facts)) .side { grid-column: 2; }
-  .board:not(:has(.side)) { grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr); }
-  .board:not(:has(.side)) .facts { grid-column: 2; }
+:host([data-layout="medium"]) .main { grid-column: 1; grid-row: 1; }
+:host([data-layout="medium"]) .side { grid-column: 2; grid-row: 1 / span 2; }
+:host([data-layout="medium"]) .facts { grid-column: 1; grid-row: 2; }
+:host([data-layout="medium"]) .map-slot,
+:host([data-layout="wide"]) .map-slot { height: 280px; }
+:host([data-layout="wide"]) .board {
+  grid-template-columns: minmax(260px, 0.95fr) minmax(280px, 1.15fr) minmax(250px, 0.9fr);
+}
+:host([data-layout="wide"]) .main { grid-column: 1; grid-row: 1; }
+:host([data-layout="wide"]) .facts { grid-column: 2; grid-row: 1; }
+:host([data-layout="wide"]) .side { grid-column: 3; grid-row: 1; }
+:host([data-layout="wide"]) .facts .stats { grid-template-columns: 1fr 1fr; }
+:host([data-layout="wide"]) .board:not(:has(.facts:not(:empty))) {
+  grid-template-columns: minmax(0, 1.1fr) minmax(250px, 0.9fr);
+}
+:host([data-layout="wide"]) .board:not(:has(.facts:not(:empty))) .side { grid-column: 2; }
+:host([data-layout="wide"]) .board:not(:has(#map-block:not([hidden]))):not(:has(#side-rest > *)) {
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+}
+:host([data-layout="wide"]) .board:not(:has(#map-block:not([hidden]))):not(:has(#side-rest > *)) .facts {
+  grid-column: 2;
 }
 `;
 
@@ -520,39 +524,96 @@ class TataIraCard extends HTMLElement {
     return devices[0];
   }
 
+  connectedCallback() {
+    this._observeLayout();
+  }
+
+  disconnectedCallback() {
+    this._layoutObserver?.disconnect();
+    this._layoutObserver = null;
+  }
+
+  _observeLayout() {
+    if (this._layoutObserver || !this.isConnected) return;
+    this._layoutObserver = new ResizeObserver((entries) => {
+      this._applyLayout(entries[0].contentRect.width);
+    });
+    this._layoutObserver.observe(this);
+    this._applyLayout(this.getBoundingClientRect().width);
+  }
+
+  _applyLayout(width) {
+    if (!width) return;
+    const layout = width >= 1040 ? "wide" : width >= 680 ? "medium" : width <= 340 ? "tiny" : "regular";
+    if (this.dataset.layout === layout) return;
+    this.dataset.layout = layout;
+  }
+
+  _ensureShell() {
+    if (this.shadowRoot.querySelector("#card")) return;
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style>
+      <ha-card id="card"><div class="wrap">
+        <div id="intro"></div>
+        <div class="board" id="board">
+          <div id="main" class="main"></div>
+          <div id="facts" class="facts"></div>
+          <div id="side" class="side">
+            <section id="map-block" class="section" hidden>
+              <h3>Location</h3>
+              <div id="map-slot" class="map-slot"></div>
+            </section>
+            <div id="side-rest"></div>
+          </div>
+        </div>
+      </div></ha-card>`;
+    const card = this.shadowRoot.getElementById("card");
+    card.addEventListener("click", (event) => {
+      const target = event.target.closest("[data-action]");
+      if (!target || !this.shadowRoot.contains(target) || target.dataset.action === "pick") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this._handle(target);
+    });
+    card.addEventListener("change", (event) => {
+      const select = event.target.closest("[data-action='pick']");
+      if (!select) return;
+      this._picked = select.value;
+      this._signatureValue = null;
+      this._render();
+    });
+    this._observeLayout();
+  }
+
   _render() {
-    if (!this.shadowRoot.querySelector("#body")) {
-      this.shadowRoot.innerHTML = `<style>${STYLE}</style><div id="body"></div>`;
-      this.shadowRoot.getElementById("body").addEventListener("click", (event) => {
-        const target = event.target.closest("[data-action]");
-        if (!target || !this.shadowRoot.contains(target) || target.dataset.action === "pick") return;
-        event.preventDefault();
-        event.stopPropagation();
-        this._handle(target);
-      });
-      this.shadowRoot.getElementById("body").addEventListener("change", (event) => {
-        const select = event.target.closest("[data-action='pick']");
-        if (!select) return;
-        this._picked = select.value;
-        this._signatureValue = null;
-        this._render();
-      });
-    }
-    const body = this.shadowRoot.getElementById("body");
+    this._ensureShell();
+    const root = this.shadowRoot;
+    const intro = root.getElementById("intro");
+    const main = root.getElementById("main");
+    const facts = root.getElementById("facts");
+    const sideRest = root.getElementById("side-rest");
+    const mapBlock = root.getElementById("map-block");
     const devices = this._hass ? devicesFrom(this._hass, this._devices) : [];
-    if (this._mapEl?.isConnected) this._mapEl.remove();
     if (!devices.length) {
-      body.innerHTML = `<ha-card><div class="wrap"><p class="empty">Add the Tata iRA.ev integration, then this card fills in from the car.</p></div></ha-card>`;
+      intro.innerHTML = `<p class="empty">Add the Tata iRA.ev integration, then this card fills in from the car.</p>`;
+      main.innerHTML = "";
+      facts.innerHTML = "";
+      sideRest.innerHTML = "";
+      mapBlock.hidden = true;
       return;
     }
     const device = this._device();
     const entries = entriesFrom(this._hass, this._registry);
-    const map = indexCar(device, entries, this._hass.states);
-    body.innerHTML = `<ha-card><div class="wrap">${this._html(device, devices, map)}</div></ha-card>`;
-    this._mountMap();
+    const car = indexCar(device, entries, this._hass.states);
+    intro.innerHTML = this._intro(device, devices, car);
+    main.innerHTML = this._controls(car);
+    facts.innerHTML = this._stats(car);
+    sideRest.innerHTML = [this._tyres(car), this._chips(car)].filter(Boolean).join("");
+    const locationId = car.location && !isBlank(car.location) ? car.location.entity_id : "";
+    mapBlock.hidden = !locationId;
+    if (locationId) this._mountMap(locationId);
   }
 
-  _html(device, devices, map) {
+  _intro(device, devices, map) {
     const name = device.name_by_user || device.name || "Tata iRA.ev";
     const parts = [];
     if (devices.length > 1 && !this._config.entity) {
@@ -568,45 +629,30 @@ class TataIraCard extends HTMLElement {
     parts.push(this._header(name, map));
     parts.push(this._banner(map));
     parts.push(this._hero(map));
-    const controls = this._controls(map);
-    const stats = this._stats(map);
-    const location =
-      map.location && !isBlank(map.location)
-        ? `<section class="section map-block"><h3>Location</h3><div class="map-slot" data-entity="${esc(map.location.entity_id)}"></div></section>`
-        : "";
-    const side = [location, this._tyres(map), this._chips(map)].filter(Boolean).join("");
-    const main = controls ? `<div class="main">${controls}</div>` : "";
-    const aside = side ? `<div class="side">${side}</div>` : "";
-    parts.push(`<div class="board">${main}${stats}${aside}</div>`);
     return parts.filter(Boolean).join("");
   }
 
-  _mountMap() {
-    const slot = this.shadowRoot.querySelector(".map-slot");
-    if (!slot) {
-      if (this._mapEl) {
-        this._mapEl.remove();
-        this._mapEl = null;
-        this._mapEntity = null;
-      }
-      return;
-    }
-    const entityId = slot.dataset.entity;
-    if (!this._mapEl || this._mapEntity !== entityId) {
+  _mountMap(entityId) {
+    const slot = this.shadowRoot.getElementById("map-slot");
+    if (!slot) return;
+    if (!this._mapEl) {
       const element = document.createElement("ha-map");
       element.className = "map";
       element.autoFit = true;
       element.zoom = 15;
       element.entities = [entityId];
+      element.hass = this._hass;
       this._mapEl = element;
       this._mapEntity = entityId;
+      slot.append(element);
+      return;
     }
     this._mapEl.hass = this._hass;
-    if (this._hass.themes) {
-      this._mapEl.themeMode = this._hass.themes.darkMode ? "dark" : "light";
+    if (this._mapEntity !== entityId) {
+      this._mapEl.entities = [entityId];
+      this._mapEntity = entityId;
     }
-    slot.replaceChildren(this._mapEl);
-    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    if (!this._mapEl.isConnected) slot.append(this._mapEl);
   }
 
   _header(name, map) {
@@ -750,7 +796,7 @@ class TataIraCard extends HTMLElement {
       })
       .join("");
     if (!buttons) return "";
-    return `<section class="section facts"><h3>Car</h3><div class="stats">${buttons}</div></section>`;
+    return `<section class="section"><h3>Car</h3><div class="stats">${buttons}</div></section>`;
   }
 
   _tyres(map) {
