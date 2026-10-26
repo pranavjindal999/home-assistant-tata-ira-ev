@@ -83,6 +83,8 @@ async def stream_live(
         session, mobile_refresh, mobile_api_key, vehicle_id, key_cache
     )
     access_token = lks_token or mobile_access
+    if not lks_token and key_cache.get("nio_rejected"):
+        raise LiveUnavailable("the live sign-in does not accept the mobile session")
     if consumed_refresh:
         remember_refresh(consumed_refresh)
         rotated = consumed_refresh
@@ -515,32 +517,28 @@ async def _async_lks(
     if mobile_api_key not in keys:
         keys.append(mobile_api_key)
     last = (0, {})
-    # A refused sign-in is 401 or 403. Keep going, because another client is
-    # accepted. A later success wins over an earlier server error.
+    # The Android client id makes this host's authorizer fail. The app uses
+    # the NIO client for the live channel.
     for api_key in keys:
-        for client_id in (NIO_CLIENT_ID, CLIENT_ID):
-            status, payload = await _async_json(
-                session,
-                method,
-                path,
-                {
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {access_token}",
-                    "x-api-key": api_key,
-                    "client_id": client_id,
-                    "App-Version": APP_VERSION,
-                    "User-Agent": LKS_USER_AGENT,
-                },
-                body,
-                LKS_HOST,
-            )
-            if status == 200:
-                return status, payload
-            if status not in (401, 403):
-                last = (status, payload)
-            elif last[0] in (0, 401, 403):
-                last = (status, payload)
+        status, payload = await _async_json(
+            session,
+            method,
+            path,
+            {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+                "x-api-key": api_key,
+                "client_id": NIO_CLIENT_ID,
+                "App-Version": APP_VERSION,
+                "User-Agent": LKS_USER_AGENT,
+            },
+            body,
+            LKS_HOST,
+        )
+        last = (status, payload)
+        if status not in (401, 403):
+            return status, payload
     return last
 
 
