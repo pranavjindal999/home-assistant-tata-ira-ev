@@ -99,9 +99,25 @@ async def stream_live(
             lks_key = None
         if lks_key:
             key_cache["key"] = lks_key
-    templates = await _async_templates(
-        session, access_token, lks_key or mobile_api_key, mobile_api_key, vehicle_id
-    )
+    try:
+        templates = await _async_templates(
+            session,
+            access_token,
+            lks_key or mobile_api_key,
+            mobile_api_key,
+            vehicle_id,
+        )
+    except LiveUnavailable:
+        if access_token == mobile_access:
+            raise
+        access_token = mobile_access
+        templates = await _async_templates(
+            session,
+            access_token,
+            lks_key or mobile_api_key,
+            mobile_api_key,
+            vehicle_id,
+        )
     chosen = select_templates(templates)
     if not chosen:
         key_cache.pop("key", None)
@@ -499,6 +515,8 @@ async def _async_lks(
     if mobile_api_key not in keys:
         keys.append(mobile_api_key)
     last = (0, {})
+    # A 401 or 403 only means this key and client pair was refused. The app's
+    # session token is accepted with a different client than the mobile one.
     for api_key in keys:
         for client_id in (NIO_CLIENT_ID, CLIENT_ID):
             status, payload = await _async_json(
@@ -518,7 +536,7 @@ async def _async_lks(
                 LKS_HOST,
             )
             last = (status, payload)
-            if status != 403:
+            if status not in (401, 403):
                 return status, payload
     return last
 
