@@ -452,7 +452,7 @@ async def _async_templates(
         session, "GET", path, access_token, lks_key, mobile_api_key, None
     )
     if status != 200:
-        raise LiveUnavailable(_http_reason(status))
+        raise LiveUnavailable(_http_reason(status, payload))
     results = payload.get("results")
     if isinstance(results, dict):
         templates = results.get("templates")
@@ -515,8 +515,8 @@ async def _async_lks(
     if mobile_api_key not in keys:
         keys.append(mobile_api_key)
     last = (0, {})
-    # A 401 or 403 only means this key and client pair was refused. The app's
-    # session token is accepted with a different client than the mobile one.
+    # A refused sign-in is 401 or 403. Keep going, because another client is
+    # accepted. A later success wins over an earlier server error.
     for api_key in keys:
         for client_id in (NIO_CLIENT_ID, CLIENT_ID):
             status, payload = await _async_json(
@@ -535,14 +535,29 @@ async def _async_lks(
                 body,
                 LKS_HOST,
             )
-            last = (status, payload)
-            if status not in (401, 403):
+            if status == 200:
                 return status, payload
+            if status not in (401, 403):
+                last = (status, payload)
+            elif last[0] in (0, 401, 403):
+                last = (status, payload)
     return last
 
 
-def _http_reason(status: int) -> str:
-    return f"the live channel returned HTTP {status}"
+def _http_reason(status: int, payload: dict[str, Any] | None = None) -> str:
+    reason = f"the live channel returned HTTP {status}"
+    if not isinstance(payload, dict):
+        return reason
+    code = payload.get("code")
+    message = payload.get("message")
+    detail = ""
+    if isinstance(code, str) and code and len(code) <= 40:
+        detail = code
+    if isinstance(message, str) and 0 < len(message) <= 80:
+        detail = f"{detail}: {message}" if detail else message
+    if detail:
+        return f"{reason} ({detail})"
+    return reason
 
 
 async def _async_json(
