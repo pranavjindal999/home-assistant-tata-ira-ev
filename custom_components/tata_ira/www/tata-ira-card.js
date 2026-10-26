@@ -1,6 +1,6 @@
 // Tata iRA.ev dashboard card. One card for every control and sensor on the car.
 
-const MARK = `<img src="/tata_ira/curvv.png?v=0.7.7" alt="">`;
+const MARK = `<img src="/tata_ira/curvv.png?v=0.7.8" alt="">`;
 
 const UNIQUE_ROLE = {
   battery: "battery",

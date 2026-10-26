@@ -84,7 +84,10 @@ async def stream_live(
     )
     access_token = lks_token or mobile_access
     if not lks_token and key_cache.get("nio_rejected"):
-        raise LiveUnavailable("the live sign-in does not accept the mobile session")
+        raise LiveUnavailable(
+            key_cache.get("nio_status")
+            or "the live sign-in does not accept the mobile session"
+        )
     if consumed_refresh:
         remember_refresh(consumed_refresh)
         rotated = consumed_refresh
@@ -101,6 +104,8 @@ async def stream_live(
             lks_key = None
         if lks_key:
             key_cache["key"] = lks_key
+    note = key_cache.get("nio_status") or "mobile session"
+    secret = key_cache.get("nio_client_secret")
     try:
         templates = await _async_templates(
             session,
@@ -108,18 +113,10 @@ async def stream_live(
             lks_key or mobile_api_key,
             mobile_api_key,
             vehicle_id,
+            secret if isinstance(secret, str) else None,
         )
-    except LiveUnavailable:
-        if access_token == mobile_access:
-            raise
-        access_token = mobile_access
-        templates = await _async_templates(
-            session,
-            access_token,
-            lks_key or mobile_api_key,
-            mobile_api_key,
-            vehicle_id,
-        )
+    except LiveUnavailable as err:
+        raise LiveUnavailable(f"{err}; {note}") from None
     chosen = select_templates(templates)
     if not chosen:
         key_cache.pop("key", None)
@@ -127,7 +124,13 @@ async def stream_live(
     accumulated: dict[str, Any] = {}
     for template in chosen:
         status, snapshot = await _async_activate(
-            session, access_token, lks_key, mobile_api_key, vehicle_id, template
+            session,
+            access_token,
+            lks_key,
+            mobile_api_key,
+            vehicle_id,
+            template,
+            secret if isinstance(secret, str) else None,
         )
         if status != 200:
             key_cache.pop("key", None)
@@ -286,8 +289,10 @@ async def _async_live_bearer(
             session, mobile_api_key, vehicle_id, key_cache
         )
     except LiveUnavailable:
+        key_cache["nio_status"] = "sign-in key was not available"
         return None, None, None
     if not api_key or not client_secret:
+        key_cache["nio_status"] = "sign-in key was not available"
         return None, None, None
     try:
         status, payload = await _async_json(
@@ -306,7 +311,9 @@ async def _async_live_bearer(
             AUTH_HOST,
         )
     except LiveUnavailable:
+        key_cache["nio_status"] = "sign-in could not be reached"
         return None, None, None
+    key_cache["nio_status"] = _sign_in_note(status, payload)
     if status != 200:
         if isinstance(payload, dict) and payload.get("code") == "SSO-1069":
             key_cache["nio_rejected"] = "1"
@@ -448,10 +455,18 @@ async def _async_templates(
     lks_key: str,
     mobile_api_key: str,
     vehicle_id: str,
+    client_secret: str | None = None,
 ) -> list[Any]:
     path = LKS_TEMPLATE_PATH.format(vehicle_id=quote(vehicle_id, safe=""))
     status, payload = await _async_lks(
-        session, "GET", path, access_token, lks_key, mobile_api_key, None
+        session,
+        "GET",
+        path,
+        access_token,
+        lks_key,
+        mobile_api_key,
+        None,
+        client_secret,
     )
     if status != 200:
         raise LiveUnavailable(_http_reason(status, payload))
@@ -472,11 +487,19 @@ async def _async_activate(
     mobile_api_key: str,
     vehicle_id: str,
     template: dict[str, Any],
+    client_secret: str | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     path = LKS_ACTIVATE_PATH.format(vehicle_id=quote(vehicle_id, safe=""))
     body = _activate_body(vehicle_id, template)
     status, payload = await _async_lks(
-        session, "POST", path, access_token, lks_key, mobile_api_key, body
+        session,
+        "POST",
+        path,
+        access_token,
+        lks_key,
+        mobile_api_key,
+        body,
+        client_secret,
     )
     if status == 400 and "templateName" in body:
         status, payload = await _async_lks(
@@ -487,6 +510,7 @@ async def _async_activate(
             lks_key,
             mobile_api_key,
             _activate_body(vehicle_id, {}),
+            client_secret,
         )
     results = payload.get("results")
     snapshot = results if isinstance(results, dict) and _is_snapshot(results) else None
@@ -512,34 +536,65 @@ async def _async_lks(
     lks_key: str | None,
     mobile_api_key: str,
     body: dict[str, Any] | None,
+    client_secret: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     keys = [lks_key] if lks_key else []
     if mobile_api_key not in keys:
         keys.append(mobile_api_key)
     last = (0, {})
     # The Android client id makes this host's authorizer fail. The app uses
-    # the NIO client for the live channel.
+    # the NIO client, and its HTTP client also sends the sign-in secret.
     for api_key in keys:
-        status, payload = await _async_json(
-            session,
-            method,
-            path,
-            {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}",
-                "x-api-key": api_key,
-                "client_id": NIO_CLIENT_ID,
-                "App-Version": APP_VERSION,
-                "User-Agent": LKS_USER_AGENT,
-            },
-            body,
-            LKS_HOST,
-        )
-        last = (status, payload)
-        if status not in (401, 403):
-            return status, payload
+        for headers in _lks_headers(access_token, api_key, client_secret):
+            status, payload = await _async_json(
+                session, method, path, headers, body, LKS_HOST
+            )
+            if status == 200:
+                return status, payload
+            if last[0] == 0:
+                last = (status, payload)
     return last
+
+
+def _lks_headers(
+    access_token: str, api_key: str, client_secret: str | None
+) -> list[dict[str, str]]:
+    """Header sets copied from the app's live-channel client."""
+    common = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "client_id": NIO_CLIENT_ID,
+        "User-Agent": LKS_USER_AGENT,
+    }
+    bearer = {**common, "Authorization": f"Bearer {access_token}"}
+    raw = {**common, "Authorization": access_token}
+    with_secret = dict(bearer)
+    if client_secret:
+        with_secret["client_secret"] = client_secret
+    return [with_secret, bearer, raw]
+
+
+def _sign_in_note(status: int, payload: dict[str, Any]) -> str:
+    """Describe a sign-in response without its secret values."""
+    note = f"sign-in HTTP {status}"
+    code = payload.get("code")
+    message = payload.get("message")
+    if isinstance(code, str) and code.replace("-", "").isalnum() and len(code) <= 20:
+        note = f"{note} {code}"
+    if (
+        isinstance(message, str)
+        and message.replace(" ", "").isalpha()
+        and len(message) <= 60
+    ):
+        note = f"{note} {message}"
+    results = payload.get("results")
+    source = results if isinstance(results, dict) else None
+    if isinstance(source, dict):
+        names = [name for name in source if isinstance(name, str) and len(name) <= 32]
+        if names:
+            note = f"{note} [{','.join(sorted(names)[:8])}]"
+    return note
 
 
 def _http_reason(status: int, payload: dict[str, Any] | None = None) -> str:
