@@ -23,8 +23,10 @@ LKS_EXPIRY_SECONDS = 900
 _B2C_KEY_NAMES = ("n_io_b2c_api_key", "nio_b2c_api_key", "n_io_b2c_x_api_key")
 
 
-def ecdh_request(device_id: str) -> tuple[dict[str, str], ec.EllipticCurvePrivateKey]:
-    """Build the after-login key exchange the app sends."""
+def ecdh_request(
+    device_id: str, api_type: str = "afterLogin"
+) -> tuple[dict[str, str], ec.EllipticCurvePrivateKey]:
+    """Build the key exchange the app sends."""
     identity = ec.generate_private_key(ec.SECP256R1())
     ephemeral = ec.generate_private_key(ec.SECP256R1())
     public = ephemeral.public_key().public_bytes(
@@ -36,7 +38,7 @@ def ecdh_request(device_id: str) -> tuple[dict[str, str], ec.EllipticCurvePrivat
         "signature": base64.b64encode(signature).decode(),
         "deviceId": device_id,
         "clientNonce": base64.b64encode(os.urandom(32)).decode(),
-        "apiType": "afterLogin",
+        "apiType": api_type,
     }
     return body, ephemeral
 
@@ -60,6 +62,35 @@ def decrypt_secrets(
     if not isinstance(payload, dict):
         raise ValueError("secrets")
     return payload
+
+
+def nio_auth_material(secrets: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return the live sign-in key and client secret from a decrypted bundle."""
+    key = secrets.get("nio_auth_x_api_key")
+    secret = secrets.get("client_secret_value")
+    if not isinstance(key, str) or not key:
+        key = None
+    if not isinstance(secret, str) or not secret:
+        secret = None
+    return key, secret
+
+
+def parse_nio_refresh(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return the live access token and a rotated refresh token."""
+    results = payload.get("results")
+    source = results if isinstance(results, dict) else payload
+    details = source.get("accessTokenDetails") if isinstance(source, dict) else None
+    if isinstance(details, dict):
+        source = details
+    if not isinstance(source, dict):
+        return None, None
+    access = source.get("accessToken")
+    refreshed = source.get("refreshToken")
+    if not isinstance(access, str) or not access:
+        return None, None
+    if not isinstance(refreshed, str) or not refreshed:
+        refreshed = None
+    return access, refreshed
 
 
 def b2c_api_key(secrets: dict[str, Any]) -> str | None:

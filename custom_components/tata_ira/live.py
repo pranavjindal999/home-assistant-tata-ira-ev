@@ -15,14 +15,19 @@ import aiohttp
 
 from .const import (
     API_HOST,
+    APP_API_KEY,
     APP_VERSION,
+    AUTH_HOST,
     CLIENT_ID,
+    CLIENT_SECRET,
     ECDH_PATH,
     LKS_ACTIVATE_PATH,
     LKS_HOST,
     LKS_TEMPLATE_PATH,
     LKS_USER_AGENT,
     NIO_CLIENT_ID,
+    NIO_REFRESH_PATH,
+    REFRESH_PATH,
 )
 from .live_protocol import (
     DEFAULT_AUTHORIZER,
@@ -37,16 +42,20 @@ from .live_protocol import (
     encode_pong,
     encode_subscribe,
     mqtt_websocket_url,
+    nio_auth_material,
+    parse_nio_refresh,
     publish_payload,
     select_templates,
 )
-from .parser import merge_live_payload
+from .parser import merge_live_payload, parse_refresh_tokens
 
 _LOGGER = logging.getLogger(__name__)
 _RENEW_SECONDS = 12 * 60
 _PING_SECONDS = 30
 
 RefreshTokens = Callable[[], Awaitable[tuple[str, str | None]]]
+RememberRefresh = Callable[[str], None]
+CurrentRefresh = Callable[[], str]
 
 
 class LiveUnavailable(Exception):
@@ -59,6 +68,8 @@ async def stream_live(
     vehicle_id: str,
     mobile_api_key: str,
     key_cache: dict[str, str],
+    current_refresh: CurrentRefresh,
+    remember_refresh: RememberRefresh,
 ) -> AsyncIterator[tuple[dict[str, Any], str | None, bool]]:
     """Yield live snapshots until the socket closes.
 
@@ -66,12 +77,23 @@ async def stream_live(
     one, and whether the broker has accepted the connection. Nothing in the
     logs includes the token, the topic, or the key.
     """
-    access_token, rotated = await refresh()
+    mobile_access, rotated = await refresh()
+    mobile_refresh = current_refresh()
+    lks_token, consumed_refresh, probed_refresh = await _async_live_bearer(
+        session, mobile_refresh, mobile_api_key, vehicle_id, key_cache
+    )
+    access_token = lks_token or mobile_access
+    if consumed_refresh:
+        remember_refresh(consumed_refresh)
+        rotated = consumed_refresh
+    elif probed_refresh:
+        remember_refresh(probed_refresh)
+        rotated = probed_refresh
     lks_key = key_cache.get("key")
     if not lks_key:
         try:
             lks_key = await _async_lks_key(
-                session, access_token, mobile_api_key, vehicle_id
+                session, mobile_access, mobile_api_key, vehicle_id
             )
         except LiveUnavailable:
             lks_key = None
@@ -222,6 +244,143 @@ async def _async_connack(websocket: aiohttp.ClientWebSocketResponse, decoder: Mq
             if code is not None:
                 return code
     raise LiveUnavailable("the live channel did not accept the connection")
+
+
+async def _async_live_bearer(
+    session: aiohttp.ClientSession,
+    mobile_refresh: str,
+    mobile_api_key: str,
+    vehicle_id: str,
+    key_cache: dict[str, str],
+) -> tuple[str | None, str | None, str | None]:
+    """Return a live-channel access token.
+
+    The second value replaces the mobile refresh token when the sign-in service
+    consumed it. The third value is a mobile refresh token rotated by the check
+    that the original token still works.
+    """
+    cached = key_cache.get("nio_refresh")
+    refresh_token = cached if isinstance(cached, str) and cached else mobile_refresh
+    if key_cache.get("nio_rejected") and refresh_token == mobile_refresh:
+        return None, None, None
+    try:
+        api_key, client_secret = await _async_nio_material(
+            session, mobile_api_key, vehicle_id, key_cache
+        )
+    except LiveUnavailable:
+        return None, None, None
+    if not api_key or not client_secret:
+        return None, None, None
+    try:
+        status, payload = await _async_json(
+            session,
+            "POST",
+            NIO_REFRESH_PATH,
+            {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": LKS_USER_AGENT,
+                "x-api-key": api_key,
+                "client_id": NIO_CLIENT_ID,
+                "client_secret": client_secret,
+            },
+            {"refreshToken": refresh_token},
+            AUTH_HOST,
+        )
+    except LiveUnavailable:
+        return None, None, None
+    if status != 200:
+        if isinstance(payload, dict) and payload.get("code") == "SSO-1069":
+            key_cache["nio_rejected"] = "1"
+            key_cache.pop("nio_refresh", None)
+        return None, None, None
+    access, refreshed = parse_nio_refresh(payload)
+    if not access:
+        return None, None, None
+    if refreshed:
+        key_cache["nio_refresh"] = refreshed
+    key_cache.pop("nio_rejected", None)
+    if refresh_token != mobile_refresh or not refreshed or refreshed == mobile_refresh:
+        return access, None, None
+    try:
+        probe_status, probe_payload = await _async_json(
+            session,
+            "POST",
+            REFRESH_PATH,
+            {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "App-Version": APP_VERSION,
+                "x-api-key": mobile_api_key or APP_API_KEY,
+            },
+            {"refreshToken": mobile_refresh},
+            API_HOST,
+        )
+    except LiveUnavailable:
+        return access, None, None
+    if probe_status == 200:
+        _probe_access, probe_refresh = parse_refresh_tokens(probe_payload)
+        if probe_refresh and probe_refresh != mobile_refresh:
+            return access, None, probe_refresh
+        return access, None, None
+    if probe_status in (401, 403):
+        return access, refreshed, None
+    return access, None, None
+
+
+async def _async_nio_material(
+    session: aiohttp.ClientSession,
+    mobile_api_key: str,
+    vehicle_id: str,
+    key_cache: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """Read the live sign-in key. This call does not use the account session."""
+    cached_key = key_cache.get("nio_api_key")
+    cached_secret = key_cache.get("nio_client_secret")
+    if (
+        isinstance(cached_key, str)
+        and cached_key
+        and isinstance(cached_secret, str)
+        and cached_secret
+    ):
+        return cached_key, cached_secret
+    device_id = "ha-" + hashlib.sha256(vehicle_id.encode()).hexdigest()[:16]
+    body, ephemeral = ecdh_request(device_id, "beforeLogin")
+    status, payload = await _async_json(
+        session,
+        "POST",
+        ECDH_PATH,
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "client_id": CLIENT_ID,
+            "App-Version": APP_VERSION,
+            "x-api-key": mobile_api_key or APP_API_KEY,
+            "User-Agent": LKS_USER_AGENT,
+        },
+        body,
+    )
+    if status != 200:
+        return None, CLIENT_SECRET
+    results = payload.get("results")
+    if not isinstance(results, dict):
+        return None, CLIENT_SECRET
+    public = results.get("serverEphemeralPublicKey")
+    encrypted = results.get("encryptedSecrets")
+    if not isinstance(public, str) or not isinstance(encrypted, str):
+        return None, CLIENT_SECRET
+    try:
+        secrets = decrypt_secrets(ephemeral, public, encrypted)
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return None, CLIENT_SECRET
+    key, secret = nio_auth_material(secrets)
+    if key:
+        key_cache["nio_api_key"] = key
+    if secret:
+        key_cache["nio_client_secret"] = secret
+    return key, secret or CLIENT_SECRET
 
 
 async def _async_lks_key(

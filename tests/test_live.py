@@ -40,6 +40,23 @@ class LiveProtocolTests(unittest.TestCase):
         secrets = _MODULE.decrypt_secrets(ephemeral, public, encrypted)
         self.assertEqual(_MODULE.b2c_api_key(secrets), "live-key")
 
+    def test_live_sign_in_reads_the_auth_key_and_tokens(self) -> None:
+        body, _ephemeral = _MODULE.ecdh_request("ha-test", "beforeLogin")
+        self.assertEqual(body["apiType"], "beforeLogin")
+        self.assertEqual(
+            _MODULE.nio_auth_material(
+                {"nio_auth_x_api_key": "key", "client_secret_value": "secret"}
+            ),
+            ("key", "secret"),
+        )
+        self.assertEqual(
+            _MODULE.parse_nio_refresh(
+                {"results": {"accessToken": "live", "refreshToken": "next"}}
+            ),
+            ("live", "next"),
+        )
+        self.assertEqual(_MODULE.parse_nio_refresh({"message": "no"}), (None, None))
+
     def test_templates_prefer_the_home_screen_pair(self) -> None:
         chosen = _MODULE.select_templates(
             [

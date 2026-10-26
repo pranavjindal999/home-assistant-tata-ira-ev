@@ -24,6 +24,8 @@ RECONNECT_INTERVAL = timedelta(seconds=15)
 API_HOST = "https://evcx.api.tatamotors"
 # Live last-known-state routes live on this host, not on API_HOST.
 LKS_HOST = "https://customer.api.ev.tatamotors.io"
+# Sign-in for the live channel. The mobile session token is not accepted there.
+AUTH_HOST = "https://customer.auth.ev.tatamotors.io"
 # That host rejects other clients. The app's Flutter HTTP client sends this.
 LKS_USER_AGENT = "Dart/3.5 (dart:io)"
 REFRESH_PATH = "/mobile/customer/api/v1/refresh-token"
@@ -41,6 +43,7 @@ DEVICE_STATUS_PATH = "/mobile/cvp/api/v1/ev/check-device-status"
 ECDH_PATH = "/mobile/customer/api/v1/security/ecdh-key-exchange"
 LKS_TEMPLATE_PATH = "/v1/vehicles/{vehicle_id}/lks/template"
 LKS_ACTIVATE_PATH = "/v1/vehicles/{vehicle_id}/lks/template/activate"
+NIO_REFRESH_PATH = "/v1/auth/refresh-token"
 
 # Same client identity the official Android app sends. The installed app is 26.9.1.
 CLIENT_ID = "TMLEV-ANDROID-APP"

@@ -166,8 +166,15 @@ class IraClient:
             self._vehicle_id,
             self._api_key,
             self._lks_key,
+            lambda: self.refresh_token,
+            self._remember_refresh_token,
         ):
             yield update
+
+    def _remember_refresh_token(self, token: str) -> None:
+        """Keep a rotated sign-in token for the next request."""
+        if token and token != self.refresh_token:
+            self.refresh_token = token
 
     async def async_set_air_conditioning(
         self, on: bool, minutes: int
