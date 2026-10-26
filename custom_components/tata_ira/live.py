@@ -19,7 +19,9 @@ from .const import (
     CLIENT_ID,
     ECDH_PATH,
     LKS_ACTIVATE_PATH,
+    LKS_HOST,
     LKS_TEMPLATE_PATH,
+    LKS_USER_AGENT,
     NIO_CLIENT_ID,
 )
 from .live_protocol import (
@@ -67,11 +69,17 @@ async def stream_live(
     access_token, rotated = await refresh()
     lks_key = key_cache.get("key")
     if not lks_key:
-        lks_key = await _async_lks_key(session, access_token, mobile_api_key, vehicle_id)
-        if not lks_key:
-            raise LiveUnavailable("the account secrets did not include the live channel key")
-        key_cache["key"] = lks_key
-    templates = await _async_templates(session, access_token, lks_key, vehicle_id)
+        try:
+            lks_key = await _async_lks_key(
+                session, access_token, mobile_api_key, vehicle_id
+            )
+        except LiveUnavailable:
+            lks_key = None
+        if lks_key:
+            key_cache["key"] = lks_key
+    templates = await _async_templates(
+        session, access_token, lks_key or mobile_api_key, mobile_api_key, vehicle_id
+    )
     chosen = select_templates(templates)
     if not chosen:
         key_cache.pop("key", None)
@@ -79,11 +87,11 @@ async def stream_live(
     accumulated: dict[str, Any] = {}
     for template in chosen:
         status, snapshot = await _async_activate(
-            session, access_token, lks_key, vehicle_id, template
+            session, access_token, lks_key, mobile_api_key, vehicle_id, template
         )
         if status != 200:
             key_cache.pop("key", None)
-            raise LiveUnavailable(f"the live channel returned HTTP {status}")
+            raise LiveUnavailable(_http_reason(status))
         if snapshot:
             accumulated = merge_live_payload(accumulated, snapshot)
     endpoint = str(chosen[0].get("endpointUrl") or "")
@@ -101,6 +109,7 @@ async def stream_live(
         rotated,
         vehicle_id,
         lks_key,
+        mobile_api_key,
         endpoint,
         authorizer,
         topics,
@@ -115,7 +124,8 @@ async def _async_socket(
     access_token: str,
     rotated: str | None,
     vehicle_id: str,
-    lks_key: str,
+    lks_key: str | None,
+    mobile_api_key: str,
     endpoint: str,
     authorizer: str,
     topics: list[str],
@@ -150,10 +160,15 @@ async def _async_socket(
                 access_token, rotated = await refresh()
                 for template in templates:
                     status, snapshot = await _async_activate(
-                        session, access_token, lks_key, vehicle_id, template
+                        session,
+                        access_token,
+                        lks_key,
+                        mobile_api_key,
+                        vehicle_id,
+                        template,
                     )
                     if status != 200:
-                        raise LiveUnavailable(f"the live channel returned HTTP {status}")
+                        raise LiveUnavailable(_http_reason(status))
                     if snapshot or rotated:
                         yield snapshot or {}, rotated, True
                         rotated = None
@@ -254,12 +269,15 @@ async def _async_templates(
     session: aiohttp.ClientSession,
     access_token: str,
     lks_key: str,
+    mobile_api_key: str,
     vehicle_id: str,
 ) -> list[Any]:
     path = LKS_TEMPLATE_PATH.format(vehicle_id=quote(vehicle_id, safe=""))
-    status, payload = await _async_lks(session, "GET", path, access_token, lks_key, None)
+    status, payload = await _async_lks(
+        session, "GET", path, access_token, lks_key, mobile_api_key, None
+    )
     if status != 200:
-        raise LiveUnavailable(f"the live channel returned HTTP {status}")
+        raise LiveUnavailable(_http_reason(status))
     results = payload.get("results")
     if isinstance(results, dict):
         templates = results.get("templates")
@@ -273,13 +291,16 @@ async def _async_templates(
 async def _async_activate(
     session: aiohttp.ClientSession,
     access_token: str,
-    lks_key: str,
+    lks_key: str | None,
+    mobile_api_key: str,
     vehicle_id: str,
     template: dict[str, Any],
 ) -> tuple[int, dict[str, Any] | None]:
     path = LKS_ACTIVATE_PATH.format(vehicle_id=quote(vehicle_id, safe=""))
     body = _activate_body(vehicle_id, template)
-    status, payload = await _async_lks(session, "POST", path, access_token, lks_key, body)
+    status, payload = await _async_lks(
+        session, "POST", path, access_token, lks_key, mobile_api_key, body
+    )
     if status == 400 and "templateName" in body:
         status, payload = await _async_lks(
             session,
@@ -287,6 +308,7 @@ async def _async_activate(
             path,
             access_token,
             lks_key,
+            mobile_api_key,
             _activate_body(vehicle_id, {}),
         )
     results = payload.get("results")
@@ -310,29 +332,40 @@ async def _async_lks(
     method: str,
     path: str,
     access_token: str,
-    lks_key: str,
+    lks_key: str | None,
+    mobile_api_key: str,
     body: dict[str, Any] | None,
 ) -> tuple[int, dict[str, Any]]:
+    keys = [lks_key] if lks_key else []
+    if mobile_api_key not in keys:
+        keys.append(mobile_api_key)
     last = (0, {})
-    for client_id in (NIO_CLIENT_ID, CLIENT_ID):
-        status, payload = await _async_json(
-            session,
-            method,
-            path,
-            {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}",
-                "x-api-key": lks_key,
-                "client_id": client_id,
-                "App-Version": APP_VERSION,
-            },
-            body,
-        )
-        last = (status, payload)
-        if status != 403:
-            return status, payload
+    for api_key in keys:
+        for client_id in (NIO_CLIENT_ID, CLIENT_ID):
+            status, payload = await _async_json(
+                session,
+                method,
+                path,
+                {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                    "x-api-key": api_key,
+                    "client_id": client_id,
+                    "App-Version": APP_VERSION,
+                    "User-Agent": LKS_USER_AGENT,
+                },
+                body,
+                LKS_HOST,
+            )
+            last = (status, payload)
+            if status != 403:
+                return status, payload
     return last
+
+
+def _http_reason(status: int) -> str:
+    return f"the live channel returned HTTP {status}"
 
 
 async def _async_json(
@@ -341,11 +374,12 @@ async def _async_json(
     path: str,
     headers: dict[str, str],
     body: dict[str, Any] | None,
+    host: str = API_HOST,
 ) -> tuple[int, dict[str, Any]]:
     try:
         async with session.request(
             method,
-            f"{API_HOST}{path}",
+            f"{host}{path}",
             headers=headers,
             json=body,
             timeout=aiohttp.ClientTimeout(total=30),

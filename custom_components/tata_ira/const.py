@@ -22,6 +22,10 @@ KEEP_CONNECTED_INTERVAL = timedelta(minutes=2)
 RECONNECT_INTERVAL = timedelta(seconds=15)
 
 API_HOST = "https://evcx.api.tatamotors"
+# Live last-known-state routes live on this host, not on API_HOST.
+LKS_HOST = "https://customer.api.ev.tatamotors.io"
+# That host rejects other clients. The app's Flutter HTTP client sends this.
+LKS_USER_AGENT = "Dart/3.5 (dart:io)"
 REFRESH_PATH = "/mobile/customer/api/v1/refresh-token"
 CHECK_PHONE_PATH = "/mobile/customer/api/v1/check-phonenumber"
 VERIFY_OTP_PATH = "/mobile/customer/api/v1/verify-phone-otp"
